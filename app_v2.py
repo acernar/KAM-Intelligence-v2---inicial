@@ -13,6 +13,141 @@ import numpy as np
 from io import BytesIO
 import base64
 
+# ==================== BACKEND: GOOGLE SHEETS O JSON LOCAL ====================
+# Detecta automáticamente el entorno:
+# - En Streamlit Cloud: usa Google Sheets (datos persistentes en la nube)
+# - En local (tu Mac): usa archivos JSON (comportamiento anterior sin cambios)
+#
+# Para activar Sheets en local también, agrega en Streamlit Secrets o en
+# .streamlit/secrets.toml:
+#   [gsheets]
+#   credentials = { ... contenido del JSON de credenciales ... }
+#   spreadsheet_id = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
+
+GSHEETS_SPREADSHEET_ID = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
+GSHEETS_ENABLED = False  # Se activa automáticamente si detecta credenciales
+
+def _init_gsheets():
+    """Inicializa el cliente de Google Sheets si hay credenciales disponibles."""
+    global GSHEETS_ENABLED
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials
+
+        SCOPES = [
+            'https://www.googleapis.com/auth/spreadsheets',
+            'https://www.googleapis.com/auth/drive'
+        ]
+
+        # Intentar cargar desde Streamlit Secrets (nube) o archivo local
+        creds_dict = None
+
+        # Opción 1: Streamlit Secrets (Streamlit Cloud)
+        if hasattr(st, 'secrets') and 'gsheets' in st.secrets:
+            creds_dict = dict(st.secrets['gsheets']['credentials'])
+
+        # Opción 2: Archivo local (desarrollo)
+        elif os.path.exists('gsheets_credentials.json'):
+            with open('gsheets_credentials.json', 'r') as f:
+                creds_dict = json.load(f)
+
+        if creds_dict:
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+            client = gspread.authorize(creds)
+            sh = client.open_by_key(GSHEETS_SPREADSHEET_ID)
+            GSHEETS_ENABLED = True
+            return sh
+    except Exception:
+        pass
+    return None
+
+@st.cache_resource(ttl=300)
+def _get_gsheets_client():
+    """Obtiene el cliente de Google Sheets (cacheado 5 minutos)."""
+    return _init_gsheets()
+
+def _leer_hoja(nombre_hoja):
+    """Lee una hoja de Google Sheets y retorna lista de dicts."""
+    try:
+        sh = _get_gsheets_client()
+        if sh is None:
+            return None
+        ws = sh.worksheet(nombre_hoja)
+        registros = ws.get_all_records()
+        return registros
+    except Exception:
+        return None
+
+def _escribir_hoja_completa(nombre_hoja, datos_dict):
+    """Escribe un dict completo en una hoja de Google Sheets.
+    Formato: cada registro es una fila. Los campos complejos (listas/dicts) se serializan como JSON string."""
+    try:
+        sh = _get_gsheets_client()
+        if sh is None:
+            return False
+        ws = sh.worksheet(nombre_hoja)
+        ws.clear()
+
+        if not datos_dict:
+            return True
+
+        # Obtener todas las columnas posibles
+        todas_columnas = set()
+        for v in datos_dict.values():
+            if isinstance(v, dict):
+                todas_columnas.update(v.keys())
+        columnas = sorted(list(todas_columnas))
+
+        # Escribir cabecera
+        filas = [columnas]
+
+        # Escribir filas
+        for key, registro in datos_dict.items():
+            if isinstance(registro, dict):
+                fila = []
+                for col in columnas:
+                    val = registro.get(col, '')
+                    # Serializar listas y dicts como JSON string
+                    if isinstance(val, (list, dict)):
+                        val = json.dumps(val, ensure_ascii=False)
+                    elif val is None:
+                        val = ''
+                    fila.append(str(val))
+                filas.append(fila)
+
+        ws.update(filas, value_input_option='RAW')
+        return True
+    except Exception as e:
+        st.warning(f"⚠️ Error al escribir en Google Sheets: {e}")
+        return False
+
+def _leer_dict_desde_hoja(nombre_hoja, clave_primaria='id'):
+    """Lee una hoja y retorna dict indexado por clave_primaria.
+    Los campos JSON string se deserializan automáticamente."""
+    try:
+        registros = _leer_hoja(nombre_hoja)
+        if registros is None:
+            return None
+        resultado = {}
+        for row in registros:
+            if not row.get(clave_primaria):
+                continue
+            key = row[clave_primaria]
+            registro = {}
+            for k, v in row.items():
+                # Intentar deserializar JSON strings (postores, listas, etc.)
+                if isinstance(v, str) and v.startswith(('[', '{')):
+                    try:
+                        v = json.loads(v)
+                    except Exception:
+                        pass
+                registro[k] = v
+            resultado[key] = registro
+        return resultado
+    except Exception:
+        return None
+
+
 # ==================== CONFIGURACIÓN ====================
 st.set_page_config(
     page_title="QUBITS KAM Intelligence v2",
@@ -163,7 +298,13 @@ def migrar_procesos_a_archivo_unico():
             json.dump(data_unificada, f, ensure_ascii=False, indent=2)
 
 def cargar_procesos_raw():
-    """Carga la base de datos completa de procesos (histórico + agregados, todo editable)"""
+    """Carga procesos desde Google Sheets (nube) o JSON local (Mac)."""
+    _get_gsheets_client()
+    if GSHEETS_ENABLED:
+        data = _leer_dict_desde_hoja('procesos', clave_primaria='id')
+        if data is not None:
+            return data
+    # Fallback a JSON local
     migrar_procesos_a_archivo_unico()
     try:
         with open(ARCHIVO_PROCESOS, 'r', encoding='utf-8') as f:
@@ -172,6 +313,9 @@ def cargar_procesos_raw():
         return {}
 
 def guardar_procesos_raw(data):
+    """Guarda procesos en Google Sheets (nube) o JSON local (Mac)."""
+    if GSHEETS_ENABLED:
+        _escribir_hoja_completa('procesos', data)
     _crear_backup(ARCHIVO_PROCESOS)
     with open(ARCHIVO_PROCESOS, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -368,6 +512,26 @@ ARCHIVO_CONTACTOS = 'crm_contactos.json'
 ARCHIVO_HISTORIAL = 'crm_historial.json'
 
 def cargar_contactos():
+    if GSHEETS_ENABLED:
+        try:
+            sh = _get_gsheets_client()
+            ws = sh.worksheet('contactos')
+            registros = ws.get_all_records()
+            data = {}
+            for r in registros:
+                cliente = r.get('cliente', '')
+                if not cliente:
+                    continue
+                if cliente not in data:
+                    data[cliente] = []
+                data[cliente].append({
+                    'nombre': r.get('nombre', ''), 'cargo': r.get('cargo', ''),
+                    'email': r.get('email', ''), 'telefono': r.get('telefono', ''),
+                    'agregado_el': r.get('agregado_el', '')
+                })
+            return data
+        except Exception:
+            pass
     try:
         with open(ARCHIVO_CONTACTOS, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -382,6 +546,19 @@ def guardar_contacto(cliente, nombre, cargo, email, telefono):
         'nombre': nombre, 'cargo': cargo, 'email': email, 'telefono': telefono,
         'agregado_el': datetime.now().strftime('%Y-%m-%d %H:%M')
     })
+    if GSHEETS_ENABLED:
+        try:
+            sh = _get_gsheets_client()
+            ws = sh.worksheet('contactos')
+            # Aplanar a filas para Sheets
+            filas = [['cliente', 'nombre', 'cargo', 'email', 'telefono', 'agregado_el']]
+            for c, contactos in data.items():
+                for ct in contactos:
+                    filas.append([c, ct.get('nombre',''), ct.get('cargo',''), ct.get('email',''), ct.get('telefono',''), ct.get('agregado_el','')])
+            ws.clear()
+            ws.update(filas, value_input_option='RAW')
+        except Exception:
+            pass
     with open(ARCHIVO_CONTACTOS, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -389,10 +566,41 @@ def eliminar_contacto(cliente, indice):
     data = cargar_contactos()
     if cliente in data and 0 <= indice < len(data[cliente]):
         data[cliente].pop(indice)
+        if GSHEETS_ENABLED:
+            try:
+                sh = _get_gsheets_client()
+                ws = sh.worksheet('contactos')
+                filas = [['cliente', 'nombre', 'cargo', 'email', 'telefono', 'agregado_el']]
+                for c, contactos in data.items():
+                    for ct in contactos:
+                        filas.append([c, ct.get('nombre',''), ct.get('cargo',''), ct.get('email',''), ct.get('telefono',''), ct.get('agregado_el','')])
+                ws.clear()
+                ws.update(filas, value_input_option='RAW')
+            except Exception:
+                pass
         with open(ARCHIVO_CONTACTOS, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
 def cargar_historial():
+    if GSHEETS_ENABLED:
+        try:
+            sh = _get_gsheets_client()
+            ws = sh.worksheet('historial')
+            registros = ws.get_all_records()
+            data = {}
+            for r in registros:
+                cliente = r.get('cliente', '')
+                if not cliente:
+                    continue
+                if cliente not in data:
+                    data[cliente] = []
+                data[cliente].append({
+                    'fecha': r.get('fecha', ''), 'nota': r.get('nota', ''),
+                    'proxima_accion': r.get('proxima_accion', '')
+                })
+            return data
+        except Exception:
+            pass
     try:
         with open(ARCHIVO_HISTORIAL, 'r', encoding='utf-8') as f:
             return json.load(f)
@@ -405,9 +613,20 @@ def guardar_historial(cliente, nota, proxima_accion):
         data[cliente] = []
     data[cliente].append({
         'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
-        'nota': nota,
-        'proxima_accion': proxima_accion
+        'nota': nota, 'proxima_accion': proxima_accion
     })
+    if GSHEETS_ENABLED:
+        try:
+            sh = _get_gsheets_client()
+            ws = sh.worksheet('historial')
+            filas = [['cliente', 'fecha', 'nota', 'proxima_accion']]
+            for c, entradas in data.items():
+                for h in entradas:
+                    filas.append([c, h.get('fecha',''), h.get('nota',''), h.get('proxima_accion','')])
+            ws.clear()
+            ws.update(filas, value_input_option='RAW')
+        except Exception:
+            pass
     with open(ARCHIVO_HISTORIAL, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -479,7 +698,14 @@ def _migrar_licitaciones_legacy_si_corresponde():
             json.dump(unificado, f, ensure_ascii=False, indent=2)
 
 def cargar_licitaciones_raw():
-    """Carga el archivo único de licitaciones. Ejecuta la migración automática la primera vez."""
+    """Carga licitaciones desde Google Sheets (nube) o JSON local (Mac)."""
+    # Intentar Google Sheets primero
+    _get_gsheets_client()  # Inicializa GSHEETS_ENABLED
+    if GSHEETS_ENABLED:
+        data = _leer_dict_desde_hoja('licitaciones', clave_primaria='id')
+        if data is not None:
+            return data
+    # Fallback a JSON local
     _migrar_licitaciones_legacy_si_corresponde()
     try:
         with open(ARCHIVO_LICITACIONES, 'r', encoding='utf-8') as f:
@@ -515,6 +741,10 @@ def _crear_backup(archivo):
         pass  # El backup nunca debe interrumpir el guardado principal
 
 def guardar_licitaciones_raw(data):
+    """Guarda licitaciones en Google Sheets (nube) o JSON local (Mac)."""
+    if GSHEETS_ENABLED:
+        _escribir_hoja_completa('licitaciones', data)
+    # Siempre guardar también en JSON local como respaldo
     _crear_backup(ARCHIVO_LICITACIONES)
     with open(ARCHIVO_LICITACIONES, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
