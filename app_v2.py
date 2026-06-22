@@ -473,8 +473,11 @@ def cargar_procesos():
         if col not in df.columns:
             df[col] = None
     
-    # montoAdjudicado siempre numérico
-    df['montoAdjudicado'] = pd.to_numeric(df['montoAdjudicado'], errors='coerce').fillna(0)
+    # Convertir columnas numéricas (vienen como string desde Google Sheets)
+    cols_numericas = ['montoAdjudicado', 'montoBase', 'diasVencidos', 'plazoMeses']
+    for col in cols_numericas:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     
     return df
 
@@ -1157,10 +1160,14 @@ def cargar_licitaciones():
         if col not in df_combinado.columns:
             df_combinado[col] = None
     
-    # Convertir montos a numéricos
-    for col in ['monto_base', 'monto_adjudicado']:
+    # Convertir columnas numéricas (vienen como string desde Google Sheets)
+    cols_numericas = ['monto_base', 'monto_adjudicado', 'empresas_participantes', 'duracion_dias']
+    for col in cols_numericas:
         if col in df_combinado.columns:
-            df_combinado[col] = pd.to_numeric(df_combinado[col].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+            df_combinado[col] = pd.to_numeric(
+                df_combinado[col].astype(str).str.replace(',', '').str.replace(' ', ''),
+                errors='coerce'
+            ).fillna(0)
     
     return df_combinado
 
@@ -2262,7 +2269,8 @@ elif "Menores" in tipo_proceso and seccion == "🎯 Oportunidades":
     st.markdown("### 🎯 Oportunidades Críticas y Estratégicas")
     
     # Procesos vencidos
-    evaluacion = df[(df['estado'] == 'En Evaluación') | (df['estado'] == 'Vigente')]
+    evaluacion = df[(df['estado'] == 'En Evaluación') | (df['estado'] == 'Vigente')].copy()
+    evaluacion['diasVencidos'] = pd.to_numeric(evaluacion['diasVencidos'], errors='coerce').fillna(0)
     evaluacion_vencida = evaluacion[evaluacion['diasVencidos'] > 30]
     
     st.markdown(f"#### 🔴 PROCESOS VENCIDOS ({len(evaluacion_vencida)})")
@@ -2327,7 +2335,8 @@ if "Licitaciones" in tipo_proceso:
             with col2:
                 st.markdown(f'<div class="metric-card"><h3>{ahorro_pct:.1f}%</h3>Diferencia Base vs Adjudicado</div>', unsafe_allow_html=True)
             with col3:
-                promedio_postores = df['empresas_participantes'].dropna().mean() if df['empresas_participantes'].notna().any() else 0
+                promedio_postores = pd.to_numeric(df['empresas_participantes'], errors='coerce').dropna().mean() if df['empresas_participantes'].notna().any() else 0
+                promedio_postores = promedio_postores if not pd.isna(promedio_postores) else 0
                 st.markdown(f'<div class="metric-card"><h3>{promedio_postores:.1f}</h3>Postores Promedio</div>', unsafe_allow_html=True)
             
             st.markdown("---")
