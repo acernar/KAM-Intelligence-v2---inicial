@@ -4,3 +4,4 @@ procesos.json
 __pycache__/
 .env
 *.pyc
+gsheets_credentials.json
