@@ -153,100 +153,242 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilos CSS personalizados QUBITS
-st.markdown("""
-    <style>
-    :root {
-        --qubits-primary: #5B6FFF;
-        --qubits-dark: #2C3E50;
-        --qubits-light: #F8F9FF;
-        --qubits-accent: #FF6B6B;
-    }
-    
-    body {
-        background-color: var(--qubits-light);
-    }
-    
-    .header-main {
-        color: var(--qubits-primary);
-        font-size: 32px;
-        font-weight: bold;
-        margin-bottom: 10px;
-        text-align: center;
-    }
-    
-    .subheader-main {
-        color: var(--qubits-dark);
-        font-size: 14px;
-        text-align: center;
-        margin-bottom: 20px;
-    }
-    
-    .metric-card {
-        background: linear-gradient(135deg, var(--qubits-primary) 0%, #7B8FFF 100%);
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-        text-align: center;
-        box-shadow: 0 4px 15px rgba(91, 111, 255, 0.2);
-    }
-    
-    .alert-critical {
-        background: #FFE6E6;
-        padding: 15px;
-        border-left: 4px solid #DC3545;
-        border-radius: 5px;
-        margin: 10px 0;
-    }
-    
-    .alert-warning {
-        background: #FFF3CD;
-        padding: 15px;
-        border-left: 4px solid #FFC107;
-        border-radius: 5px;
-        margin: 10px 0;
-    }
-    
-    .alert-info {
-        background: #D1ECF1;
-        padding: 15px;
-        border-left: 4px solid #17A2B8;
-        border-radius: 5px;
-        margin: 10px 0;
-    }
-    
-    .alert-success {
-        background: #D4EDDA;
-        padding: 15px;
-        border-left: 4px solid #28A745;
-        border-radius: 5px;
-        margin: 10px 0;
-    }
-    
-    .card-cliente {
-        background: white;
-        border: 1px solid var(--qubits-primary);
-        padding: 15px;
-        border-radius: 8px;
-        margin: 10px 0;
-    }
-    
-    .renovacion-urgente {
-        background: #FFE6E6;
-        border-left: 4px solid #DC3545;
-    }
-    
-    .renovacion-proxima {
-        background: #FFF3CD;
-        border-left: 4px solid #FFC107;
-    }
-    
-    .renovacion-normal {
-        background: #D1ECF1;
-        border-left: 4px solid #17A2B8;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# ── CSS KAM Intelligence v2 — Sistema de diseño profesional ──────────────
+st.markdown("""<style>
+
+/* PALETA CORPORATIVA */
+:root {
+    --k-purple:    #534AB7;
+    --k-purple-lt: #EEEDFE;
+    --k-purple-md: #7F77DD;
+    --k-teal:      #0F6E56;
+    --k-teal-lt:   #E1F5EE;
+    --k-teal-md:   #1D9E75;
+    --k-coral:     #993C1D;
+    --k-coral-lt:  #FAECE7;
+    --k-coral-md:  #D85A30;
+    --k-amber:     #854F0B;
+    --k-amber-lt:  #FAEEDA;
+    --k-amber-md:  #BA7517;
+    --k-blue:      #185FA5;
+    --k-blue-lt:   #E6F1FB;
+    --k-blue-md:   #378ADD;
+    --k-gray:      #5F5E5A;
+    --k-gray-lt:   #F1EFE8;
+    --k-gray-md:   #888780;
+}
+
+/* HEADER PRINCIPAL */
+.kam-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 0 12px;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    margin-bottom: 16px;
+}
+.kam-logo {
+    width: 34px; height: 34px;
+    background: var(--k-purple);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.kam-header-text h1 {
+    font-size: 15px; font-weight: 500;
+    color: var(--color-text-primary); margin: 0;
+}
+.kam-header-text p {
+    font-size: 10px; color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.8px; margin: 0;
+}
+
+/* METRIC CARDS */
+.kc {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 14px 16px;
+    position: relative; overflow: hidden;
+}
+.kc::before {
+    content: ''; position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+}
+.kc.p::before { background: var(--k-purple-md); }
+.kc.t::before { background: var(--k-teal-md); }
+.kc.c::before { background: var(--k-coral-md); }
+.kc.a::before { background: var(--k-amber-md); }
+.kc.b::before { background: var(--k-blue-md); }
+.kc.g::before { background: var(--k-gray-md); }
+.kc-val { font-size: 20px; font-weight: 500; margin-bottom: 1px; }
+.kc.p .kc-val { color: var(--k-purple); }
+.kc.t .kc-val { color: var(--k-teal); }
+.kc.c .kc-val { color: var(--k-coral); }
+.kc.a .kc-val { color: var(--k-amber); }
+.kc.b .kc-val { color: var(--k-blue); }
+.kc.g .kc-val { color: var(--k-gray); }
+.kc-lbl {
+    font-size: 10px; color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.6px;
+}
+.kc-delta { font-size: 10px; color: var(--color-text-secondary); margin-top: 5px; }
+.kc-delta.up { color: var(--k-teal); }
+.kc-delta.dn { color: var(--k-coral); }
+.kc-delta.warn { color: var(--k-amber); }
+
+/* CARDS GENÉRICAS */
+.km-card {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-lg);
+    padding: 1rem 1.125rem;
+    margin-bottom: 10px;
+}
+.km-card-title {
+    font-size: 12px; font-weight: 500;
+    color: var(--color-text-primary); margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.km-card-link { font-size: 11px; color: var(--k-purple); cursor: pointer; }
+
+/* LISTAS DE ÍTEMS (oportunidades, renovaciones) */
+.km-row {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 0.5px solid var(--color-border-tertiary);
+    gap: 8px;
+}
+.km-row:last-child { border-bottom: none; }
+.km-row-left { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.km-row-entity {
+    font-size: 12px; font-weight: 500;
+    color: var(--color-text-primary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.km-row-sub { font-size: 10px; color: var(--color-text-secondary); }
+.km-row-right { text-align: right; flex-shrink: 0; }
+.km-row-amount { font-size: 12px; font-weight: 500; color: var(--k-purple); }
+.km-row-days { font-size: 10px; }
+.days-red   { color: var(--k-coral); }
+.days-amber { color: var(--k-amber); }
+.days-green { color: var(--k-teal); }
+
+/* BADGES */
+.badge {
+    display: inline-block; font-size: 10px;
+    padding: 2px 7px; border-radius: 10px; font-weight: 500;
+}
+.badge.purple { background: var(--k-purple-lt); color: var(--k-purple); }
+.badge.teal   { background: var(--k-teal-lt);   color: var(--k-teal); }
+.badge.coral  { background: var(--k-coral-lt);  color: var(--k-coral); }
+.badge.amber  { background: var(--k-amber-lt);  color: var(--k-amber); }
+.badge.blue   { background: var(--k-blue-lt);   color: var(--k-blue); }
+.badge.gray   { background: var(--k-gray-lt);   color: var(--k-gray); }
+
+/* BARRAS HORIZONTALES */
+.km-bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+.km-bar-lbl {
+    font-size: 10px; color: var(--color-text-secondary);
+    width: 100px; text-align: right;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.km-bar-track {
+    flex: 1; height: 16px;
+    background: var(--color-background-secondary);
+    border-radius: 3px; overflow: hidden;
+}
+.km-bar-fill {
+    height: 100%; border-radius: 3px;
+    display: flex; align-items: center;
+    padding-right: 5px; justify-content: flex-end;
+    font-size: 9px; color: white; font-weight: 500;
+}
+
+/* ESTADO BARRAS */
+.km-state-row {
+    display: flex; align-items: center;
+    gap: 6px; margin-bottom: 8px;
+}
+.km-state-dot { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.km-state-name { font-size: 11px; color: var(--color-text-secondary); flex: 1; }
+.km-state-bar {
+    flex: 1; height: 6px;
+    background: var(--color-background-secondary);
+    border-radius: 3px; overflow: hidden; margin: 0 8px;
+}
+.km-state-fill { height: 100%; border-radius: 3px; }
+.km-state-val { font-size: 10px; font-weight: 500; color: var(--color-text-primary); min-width: 22px; text-align: right; }
+
+/* ALERTAS */
+.alert-critical {
+    background: var(--k-coral-lt);
+    border-left: 3px solid var(--k-coral-md);
+    padding: 10px 14px; border-radius: 0 6px 6px 0;
+    margin: 7px 0; color: var(--color-text-primary);
+    font-size: 13px;
+}
+.alert-warning {
+    background: var(--k-amber-lt);
+    border-left: 3px solid var(--k-amber-md);
+    padding: 10px 14px; border-radius: 0 6px 6px 0;
+    margin: 7px 0; color: var(--color-text-primary);
+    font-size: 13px;
+}
+.alert-info {
+    background: var(--k-blue-lt);
+    border-left: 3px solid var(--k-blue-md);
+    padding: 10px 14px; border-radius: 0 6px 6px 0;
+    margin: 7px 0; color: var(--color-text-primary);
+    font-size: 13px;
+}
+.alert-success {
+    background: var(--k-teal-lt);
+    border-left: 3px solid var(--k-teal-md);
+    padding: 10px 14px; border-radius: 0 6px 6px 0;
+    margin: 7px 0; color: var(--color-text-primary);
+    font-size: 13px;
+}
+
+/* CARDS DE CLIENTE/PROCESO */
+.card-cliente {
+    background: var(--color-background-primary);
+    border: 0.5px solid var(--color-border-tertiary);
+    padding: 12px 14px; border-radius: var(--border-radius-md);
+    margin: 7px 0; font-size: 13px;
+}
+
+/* RENOVACIONES */
+.renovacion-urgente {
+    background: var(--k-coral-lt);
+    border-left: 3px solid var(--k-coral-md);
+}
+.renovacion-proxima {
+    background: var(--k-amber-lt);
+    border-left: 3px solid var(--k-amber-md);
+}
+.renovacion-normal {
+    background: var(--k-teal-lt);
+    border-left: 3px solid var(--k-teal-md);
+}
+
+/* SIDEBAR MINI-KPIS */
+.sb-mini-kpi {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-md);
+    padding: 8px 10px; text-align: center;
+}
+.sb-mini-val { font-size: 16px; font-weight: 500; color: var(--color-text-primary); }
+.sb-mini-lbl { font-size: 9px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* STREAMLIT OVERRIDES */
+.stDataFrame { border-radius: var(--border-radius-md); overflow: hidden; }
+[data-testid="stMetricValue"] { font-weight: 500; }
+div[data-testid="stSidebarContent"] > div:first-child { padding-top: 0.5rem; }
+
+</style>""", unsafe_allow_html=True)
+
 
 # ==================== CARGAR DATOS ====================
 ARCHIVO_PROCESOS_BASE = 'procesos_73.json'  # fuente histórica original (solo lectura, ya no se usa directo)
@@ -1215,8 +1357,22 @@ if df_menores.empty and df_licitaciones.empty:
 # ==================== HEADER ====================
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
-    st.markdown('<div class="header-main">📊 QUBITS KAM INTELLIGENCE v2</div>', unsafe_allow_html=True)
-    st.markdown('<div class="subheader-main">Plataforma de Inteligencia Comercial - Menores a 8 UIT</div>', unsafe_allow_html=True)
+    st.markdown("""
+        <div class="kam-header">
+            <div class="kam-logo">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                    <rect x="1" y="1" width="7" height="7" rx="1.5" fill="#EEEDFE"/>
+                    <rect x="10" y="1" width="7" height="7" rx="1.5" fill="#AFA9EC"/>
+                    <rect x="1" y="10" width="7" height="7" rx="1.5" fill="#AFA9EC"/>
+                    <rect x="10" y="10" width="7" height="7" rx="1.5" fill="#EEEDFE"/>
+                </svg>
+            </div>
+            <div class="kam-header-text">
+                <h1>KAM Intelligence</h1>
+                <p>Inteligencia Comercial · v2</p>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -1272,70 +1428,70 @@ with st.sidebar:
     
     st.markdown("---")
     
-    # Widgets laterales - KPIs Rápidos
-    st.markdown("### 📈 KPIs Rápidos")
-    
+    # KPIs rápidos en sidebar
+    st.markdown("---")
     if "Menores" in tipo_proceso:
-        # KPIs para Menores (≤8 UIT)
-        col1, col2 = st.columns(2)
+        total_p = len(df)
+        mercado = df['montoAdjudicado'].sum()/1e6 if len(df) > 0 else 0
+        tasa_sb = (len(df[df['resultadoAdjudicacion'] == 'Adjudicado']) / total_p * 100) if total_p > 0 else 0
+        col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Procesos", len(df), "SEACE")
+            st.markdown(f'<div class="sb-mini-kpi"><div class="sb-mini-val">{total_p}</div><div class="sb-mini-lbl">Total</div></div>', unsafe_allow_html=True)
         with col2:
-            st.metric("Mercado", f"S/ {df['montoAdjudicado'].sum()/1000000:.2f}M", "adjudicado")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if len(df) > 0:
-                tasa = (len(df[df['resultadoAdjudicacion'] == 'Adjudicado']) / len(df) * 100)
-                st.metric("Éxito", f"{tasa:.1f}%", "adjudicados")
-        with col2:
-            st.metric("Cuota Q3", "S/ 500K", "meta")
+            st.markdown(f'<div class="sb-mini-kpi"><div class="sb-mini-val" style="color:#0F6E56">{tasa_sb:.0f}%</div><div class="sb-mini-lbl">Cierre</div></div>', unsafe_allow_html=True)
+        with col3:
+            st.markdown(f'<div class="sb-mini-kpi"><div class="sb-mini-val" style="color:#534AB7">S/{mercado:.1f}M</div><div class="sb-mini-lbl">Mercado</div></div>', unsafe_allow_html=True)
     else:
-        # KPIs para Licitaciones (>8 UIT)
-        col1, col2 = st.columns(2)
+        total_l = len(df)
+        adjudicadas_sb = len(df[df['estado'] == 'Contrato Firmado']) if total_l > 0 else 0
+        activos_sb = len(df[df['estado'].isin(['Publicado', 'Abierto para participar'])]) if total_l > 0 else 0
+        col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Total Licitaciones", len(df), "procesos")
+            st.markdown(f'<div class="sb-mini-kpi"><div class="sb-mini-val">{total_l}</div><div class="sb-mini-lbl">Total</div></div>', unsafe_allow_html=True)
         with col2:
-            st.metric("Mercado Base", f"S/ {df['monto_base'].sum()/1000000:.2f}M", "en disputa")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            adjudicadas = len(df[df['estado'] == 'Contrato Firmado'])
-            st.metric("Adjudicadas", adjudicadas, "cerradas")
-        with col2:
-            if len(df) > 0:
-                st.metric("Entidades", df['entidad'].nunique(), "activas")
+            tasa_l = adjudicadas_sb / total_l * 100 if total_l > 0 else 0
+            st.markdown(f'<div class="sb-mini-kpi"><div class="sb-mini-val" style="color:#0F6E56">{tasa_l:.0f}%</div><div class="sb-mini-lbl">Cierre</div></div>', unsafe_allow_html=True)
+        with col3:
+            st.markdown(f'<div class="sb-mini-kpi"><div class="sb-mini-val" style="color:#993C1D">{activos_sb}</div><div class="sb-mini-lbl">Activos</div></div>', unsafe_allow_html=True)
+
 
 # ==================== SECCIÓN 1: DASHBOARD ====================
 if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
-    st.markdown("### 📊 Dashboard Ejecutivo")
-    
+    st.markdown("### 📊 Dashboard Ejecutivo — Menores ≤8 UIT")
+
     col_refresh, col_spacer = st.columns([1, 5])
     with col_refresh:
         if st.button("🔄 Refrescar", key="refresh_dashboard"):
             st.rerun()
-    
+
+    # KPIs principales
+    total_m = len(df)
+    adj_m = len(df[df['resultadoAdjudicacion'] == 'Adjudicado']) if total_m > 0 else 0
+    desierto_m = len(df[df['resultadoAdjudicacion'] == 'Desierto']) if total_m > 0 else 0
+    tasa_m = adj_m / total_m * 100 if total_m > 0 else 0
+    mercado_m = df['montoAdjudicado'].sum()
+    clientes_m = df['entidad'].nunique() if total_m > 0 else 0
+
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown(f'<div class="metric-card"><h3>{len(df)}</h3>Procesos Totales</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kc p"><div class="kc-val">{total_m}</div><div class="kc-lbl">Procesos totales</div><div class="kc-delta">{clientes_m} clientes únicos</div></div>', unsafe_allow_html=True)
     with col2:
-        st.markdown(f'<div class="metric-card"><h3>S/ {df["montoAdjudicado"].sum()/1000000:.2f}M</h3>Mercado Total</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kc t"><div class="kc-val">S/ {mercado_m/1e6:.2f}M</div><div class="kc-lbl">Mercado total</div><div class="kc-delta up">Monto adjudicado</div></div>', unsafe_allow_html=True)
     with col3:
-        tasa = len(df[df['resultadoAdjudicacion'] == 'Adjudicado']) / len(df) * 100
-        st.markdown(f'<div class="metric-card"><h3>{tasa:.1f}%</h3>Tasa de Éxito</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kc c"><div class="kc-val">{tasa_m:.1f}%</div><div class="kc-lbl">Tasa de éxito</div><div class="kc-delta">{adj_m} adjudicados</div></div>', unsafe_allow_html=True)
     with col4:
-        st.markdown(f'<div class="metric-card"><h3>{df["entidad"].nunique()}</h3>Clientes Únicos</div>', unsafe_allow_html=True)
-    
+        st.markdown(f'<div class="kc a"><div class="kc-val">{desierto_m}</div><div class="kc-lbl">Desiertos</div><div class="kc-delta warn">{desierto_m/total_m*100:.1f}% del total</div></div>', unsafe_allow_html=True)
+
     st.markdown("---")
-    
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
         # Estado
         estado_counts = df['estado'].value_counts()
         fig = px.pie(values=estado_counts.values, names=estado_counts.index,
                      title="📊 Distribución por Estado",
-                     color_discrete_sequence=['#5B6FFF', '#FF6B6B', '#FFC107'])
+                     color_discrete_sequence=['#00D4FF', '#FF2D78', '#4F7CFF', '#00E5A0', '#FF8C42', '#A78BFA', '#F59E0B'], template='plotly_dark')
         st.plotly_chart(fig, use_container_width=True)
         
         estado_click = st.selectbox("🔍 Ver procesos de un estado:", ["—"] + estado_counts.index.tolist(), key="estado_drill")
@@ -1351,7 +1507,7 @@ if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
         fig = px.bar(x=resultado_counts.index, y=resultado_counts.values,
                      title="✅ Resultados de Adjudicación",
                      labels={'x': 'Resultado', 'y': 'Procesos'},
-                     color_discrete_sequence=['#5B6FFF', '#FF6B6B', '#FFC107'])
+                     color_discrete_sequence=['#00D4FF', '#FF2D78', '#4F7CFF', '#00E5A0', '#FF8C42', '#A78BFA', '#F59E0B'], template='plotly_dark')
         st.plotly_chart(fig, use_container_width=True)
         
         resultado_click = st.selectbox("🔍 Ver procesos de un resultado:", ["—"] + resultado_counts.index.tolist(), key="resultado_drill")
@@ -1368,7 +1524,7 @@ if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
         fig = px.bar(x=regiones.values, y=regiones.index, orientation='h',
                       title="🌍 Top Regiones",
                       labels={'x': 'Procesos', 'y': 'Región'},
-                      color_discrete_sequence=['#5B6FFF'])
+                      color_discrete_sequence=['#5B6FFF'], template='plotly_dark')
         fig.update_layout(yaxis={'categoryorder': 'total ascending'})
         st.plotly_chart(fig, use_container_width=True)
         
@@ -1384,7 +1540,7 @@ if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
         fig = px.bar(x=subcats.values, y=subcats.index, orientation='h',
                       title="🎯 Top Servicios Demandados",
                       labels={'x': 'Procesos', 'y': 'Servicio'},
-                      color_discrete_sequence=['#7B8FFF'])
+                      color_discrete_sequence=['#7B8FFF'], template='plotly_dark')
         fig.update_layout(yaxis={'categoryorder': 'total ascending'})
         st.plotly_chart(fig, use_container_width=True)
         
@@ -2017,7 +2173,8 @@ elif "Menores" in tipo_proceso and seccion == "💼 Análisis de Competencia":
     fig = px.bar(competencia, x='proveedor', y='monto',
                  title="Montos Adjudicados por Proveedor",
                  labels={'monto': 'Monto (S/)', 'proveedor': 'Proveedor'},
-                 color_discrete_sequence=['#5B6FFF'])
+                 color_discrete_sequence=['#00D4FF', '#FF2D78', '#4F7CFF', '#00E5A0', '#FF8C42', '#A78BFA', '#F59E0B'],
+                 template='plotly_dark')
     fig.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(fig, use_container_width=True)
     
@@ -2337,103 +2494,146 @@ elif "Menores" in tipo_proceso and seccion == "🎯 Oportunidades":
 
 if "Licitaciones" in tipo_proceso:
     if seccion == "📊 Dashboard de Licitaciones":
-        st.markdown("### 📊 Dashboard de Licitaciones")
-        
+        st.markdown("### 📊 Dashboard · Licitaciones >8 UIT")
+
         col_refresh, col_spacer = st.columns([1, 5])
         with col_refresh:
             if st.button("🔄 Refrescar", key="refresh_licitaciones"):
                 st.rerun()
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown(f'<div class="metric-card"><h3>{len(df)}</h3>Licitaciones Totales</div>', unsafe_allow_html=True)
-        with col2:
-            st.markdown(f'<div class="metric-card"><h3>S/ {df["monto_base"].sum()/1000000:.2f}M</h3>Mercado Base</div>', unsafe_allow_html=True)
-        with col3:
-            adjudicadas = len(df[df['estado'] == 'Contrato Firmado'])
-            st.markdown(f'<div class="metric-card"><h3>{adjudicadas}</h3>Adjudicadas</div>', unsafe_allow_html=True)
-        with col4:
-            st.markdown(f'<div class="metric-card"><h3>{df["entidad"].nunique()}</h3>Entidades</div>', unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        if len(df) > 0:
-            # Fila de análisis comercial
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                monto_adj_total = df['monto_adjudicado'].sum()
-                ahorro_pct = ((df['monto_base'].sum() - monto_adj_total) / df['monto_base'].sum() * 100) if df['monto_base'].sum() > 0 else 0
-                st.markdown(f'<div class="metric-card"><h3>S/ {monto_adj_total/1000000:.2f}M</h3>Monto Adjudicado</div>', unsafe_allow_html=True)
-            with col2:
-                st.markdown(f'<div class="metric-card"><h3>{ahorro_pct:.1f}%</h3>Diferencia Base vs Adjudicado</div>', unsafe_allow_html=True)
-            with col3:
-                promedio_postores = pd.to_numeric(df['empresas_participantes'], errors='coerce').dropna().mean() if df['empresas_participantes'].notna().any() else 0
-                promedio_postores = promedio_postores if not pd.isna(promedio_postores) else 0
-                st.markdown(f'<div class="metric-card"><h3>{promedio_postores:.1f}</h3>Postores Promedio</div>', unsafe_allow_html=True)
-            
-            st.markdown("---")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                tipo_lic_counts = df['tipo_licitacion'].value_counts()
-                fig = px.pie(values=tipo_lic_counts.values, names=tipo_lic_counts.index,
-                           title="Distribución por Tipo de Licitación",
-                           color_discrete_sequence=['#5B6FFF', '#7B8FFF', '#9BA9FF', '#BBBBFF'])
-                st.plotly_chart(fig, use_container_width=True)
-                
-                tipo_click = st.selectbox("🔍 Ver licitaciones de un tipo:", ["—"] + tipo_lic_counts.index.tolist(), key="tipo_lic_drill")
-                if tipo_click != "—":
-                    st.dataframe(
-                        df[df['tipo_licitacion'] == tipo_click][['id', 'entidad', 'region', 'estado', 'monto_base', 'ganador']],
-                        use_container_width=True
-                    )
-            
-            with col2:
-                estado_counts = df['estado'].value_counts()
-                fig = px.bar(x=estado_counts.index, y=estado_counts.values,
-                           title="Licitaciones por Estado",
-                           labels={'x': 'Estado', 'y': 'Cantidad'},
-                           color_discrete_sequence=['#5B6FFF'])
-                st.plotly_chart(fig, use_container_width=True)
-                
-                estado_click = st.selectbox("🔍 Ver licitaciones de un estado:", ["—"] + estado_counts.index.tolist(), key="estado_lic_drill")
-                if estado_click != "—":
-                    st.dataframe(
-                        df[df['estado'] == estado_click][['id', 'entidad', 'region', 'tipo_licitacion', 'monto_base', 'ganador']],
-                        use_container_width=True
-                    )
-            
-            st.markdown("---")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                region_counts = df.groupby('region')['monto_base'].sum().sort_values(ascending=False).head(10)
-                if not region_counts.empty:
-                    fig = px.bar(x=region_counts.values, y=region_counts.index, orientation='h',
-                               title="🌍 Mercado Base por Región (Top 10)",
-                               labels={'x': 'Monto Base (S/)', 'y': 'Región'},
-                               color_discrete_sequence=['#5B6FFF'])
-                    fig.update_layout(yaxis={'categoryorder': 'total ascending'})
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            with col2:
-                entidad_counts = df.groupby('entidad')['monto_base'].sum().sort_values(ascending=False).head(10)
-                if not entidad_counts.empty:
-                    fig = px.bar(x=entidad_counts.values, y=entidad_counts.index, orientation='h',
-                               title="🏛 Top Entidades por Monto en Licitación",
-                               labels={'x': 'Monto Base (S/)', 'y': 'Entidad'},
-                               color_discrete_sequence=['#7B8FFF'])
-                    fig.update_layout(yaxis={'categoryorder': 'total ascending'})
-                    st.plotly_chart(fig, use_container_width=True)
-            
-            st.markdown("---")
-            st.markdown("#### 📋 Todas las Licitaciones")
-            cols_mostrar = ['id', 'titulo', 'entidad', 'region', 'tipo_licitacion', 'estado', 'monto_base', 'monto_adjudicado', 'ganador', 'empresas_participantes']
-            cols_disponibles = [c for c in cols_mostrar if c in df.columns]
-            st.dataframe(df[cols_disponibles], use_container_width=True)
+
+        if len(df) == 0:
+            st.info("No hay licitaciones aún. Ve a Base de Datos para agregar.")
         else:
-            st.info("No hay licitaciones aún. Agrega procesos desde Base de Datos.")
+            # ── Fila 1: KPIs principales ─────────────────────────────────────
+            adjudicadas_d = len(df[df['estado'] == 'Contrato Firmado'])
+            activos_d = len(df[df['estado'].isin(['Publicado', 'Abierto para participar'])])
+            tasa_d = adjudicadas_d / len(df) * 100
+            monto_adj_d = df['monto_adjudicado'].sum()
+            monto_base_d = df['monto_base'].sum()
+            entidades_d = df['entidad'].nunique()
+            promedio_post = pd.to_numeric(df['empresas_participantes'], errors='coerce').mean()
+            promedio_post = promedio_post if not pd.isna(promedio_post) else 0
+
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.markdown(f'<div class="kc p"><div class="kc-val">{len(df)}</div><div class="kc-lbl">Total licitaciones</div><div class="kc-delta">{entidades_d} entidades</div></div>', unsafe_allow_html=True)
+            with col2:
+                st.markdown(f'<div class="kc t"><div class="kc-val">S/ {monto_base_d/1e6:.1f}M</div><div class="kc-lbl">Monto base total</div><div class="kc-delta up">Mercado en disputa</div></div>', unsafe_allow_html=True)
+            with col3:
+                st.markdown(f'<div class="kc c"><div class="kc-val">S/ {monto_adj_d/1e6:.1f}M</div><div class="kc-lbl">Monto adjudicado</div><div class="kc-delta">{tasa_d:.1f}% tasa de cierre</div></div>', unsafe_allow_html=True)
+            with col4:
+                st.markdown(f'<div class="kc a"><div class="kc-val">{activos_d}</div><div class="kc-lbl">Participar ahora</div><div class="kc-delta warn">Publicados / abiertos</div></div>', unsafe_allow_html=True)
+            with col5:
+                st.markdown(f'<div class="kc b"><div class="kc-val">{promedio_post:.1f}</div><div class="kc-lbl">Postores promedio</div><div class="kc-delta">Por proceso</div></div>', unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # ── Fila 2: Estado + Tipo de licitación ──────────────────────────
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown('<div class="km-card">', unsafe_allow_html=True)
+                st.markdown('<div class="km-card-title">Distribución por estado</div>', unsafe_allow_html=True)
+                estado_counts = df['estado'].value_counts()
+                COLORES_ESTADO = {
+                    'Contrato Firmado': '#7F77DD',
+                    'Adjudicado — pendiente de firma': '#1D9E75',
+                    'Publicado': '#378ADD',
+                    'Abierto para participar': '#1D9E75',
+                    'En Evaluación': '#BA7517',
+                    'Desierto — ninguna propuesta cumplió los requisitos': '#888780',
+                    'Cancelado': '#D85A30',
+                }
+                total_est = len(df)
+                for estado, count in estado_counts.items():
+                    color = COLORES_ESTADO.get(estado, '#888780')
+                    pct = count / total_est * 100
+                    nombre_corto = estado[:30] + '…' if len(estado) > 30 else estado
+                    st.markdown(f'''
+                    <div class="km-state-row">
+                        <div class="km-state-dot" style="background:{color}"></div>
+                        <div class="km-state-name">{nombre_corto}</div>
+                        <div class="km-state-bar"><div class="km-state-fill" style="width:{pct}%;background:{color}"></div></div>
+                        <div class="km-state-val">{count}</div>
+                    </div>''', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                tipo_click = st.selectbox("Ver licitaciones por estado:", ["—"] + estado_counts.index.tolist(), key="estado_lic_drill")
+                if tipo_click != "—":
+                    st.dataframe(df[df['estado'] == tipo_click][['id', 'entidad', 'region', 'tipo_licitacion', 'monto_base', 'ganador']], use_container_width=True)
+
+            with col2:
+                tipo_lic_counts = df['tipo_licitacion'].value_counts()
+                PALETA = ['#7F77DD', '#1D9E75', '#D85A30', '#BA7517', '#378ADD', '#888780', '#F0997B']
+                fig = px.pie(
+                    values=tipo_lic_counts.values,
+                    names=tipo_lic_counts.index,
+                    title="Tipos de procedimiento",
+                    color_discrete_sequence=PALETA,
+                    hole=0.4,
+                    template='plotly_white'
+                )
+                fig.update_layout(
+                    margin=dict(t=40, b=10, l=10, r=10),
+                    legend=dict(font=dict(size=10)),
+                    title_font_size=13
+                )
+                fig.update_traces(textfont_size=11)
+                st.plotly_chart(fig, use_container_width=True)
+
+                tipo_click2 = st.selectbox("Ver licitaciones por tipo:", ["—"] + tipo_lic_counts.index.tolist(), key="tipo_lic_drill")
+                if tipo_click2 != "—":
+                    st.dataframe(df[df['tipo_licitacion'] == tipo_click2][['id', 'entidad', 'estado', 'monto_base', 'ganador']], use_container_width=True)
+
+            st.markdown("---")
+
+            # ── Fila 3: Top entidades + Regiones ─────────────────────────────
+            col1, col2 = st.columns(2)
+
+            with col1:
+                entidad_counts = df.groupby('entidad')['monto_base'].sum().sort_values(ascending=False).head(8)
+                if not entidad_counts.empty:
+                    st.markdown('<div class="km-card">', unsafe_allow_html=True)
+                    st.markdown('<div class="km-card-title">Top entidades por monto base</div>', unsafe_allow_html=True)
+                    max_val = entidad_counts.max()
+                    colores_bar = ['#7F77DD', '#1D9E75', '#D85A30', '#BA7517', '#378ADD', '#888780', '#F0997B', '#5DCAA5']
+                    for i, (entidad, monto) in enumerate(entidad_counts.items()):
+                        pct = monto / max_val * 100
+                        color = colores_bar[i % len(colores_bar)]
+                        label = f"S/ {monto/1e6:.1f}M" if monto >= 1e6 else f"S/ {monto/1e3:.0f}K"
+                        nombre = entidad[:28] + '…' if len(entidad) > 28 else entidad
+                        st.markdown(f'''
+                        <div class="km-bar-row">
+                            <div class="km-bar-lbl">{nombre}</div>
+                            <div class="km-bar-track"><div class="km-bar-fill" style="width:{pct}%;background:{color}">{label}</div></div>
+                        </div>''', unsafe_allow_html=True)
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+            with col2:
+                region_counts = df.groupby('region')['monto_base'].sum().sort_values(ascending=False).head(8)
+                if not region_counts.empty:
+                    fig = px.bar(
+                        x=region_counts.values,
+                        y=region_counts.index,
+                        orientation='h',
+                        title="Mercado base por región",
+                        labels={'x': 'Monto Base (S/)', 'y': ''},
+                        color_discrete_sequence=['#7F77DD', '#1D9E75', '#D85A30', '#BA7517', '#378ADD', '#888780', '#F0997B', '#5DCAA5'],
+                        template='plotly_white'
+                    )
+                    fig.update_layout(
+                        yaxis={'categoryorder': 'total ascending'},
+                        margin=dict(t=40, b=10, l=10, r=10),
+                        title_font_size=13, showlegend=False
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+            st.markdown("---")
+            st.markdown("#### Todas las licitaciones")
+            cols_mostrar = ['id', 'titulo', 'entidad', 'region', 'tipo_licitacion', 'estado', 'monto_base', 'monto_adjudicado', 'ganador']
+            cols_disp = [c for c in cols_mostrar if c in df.columns]
+            st.dataframe(df[cols_disp], use_container_width=True, hide_index=True)
+
     
     elif seccion == "🗄️ Base de Datos de Licitaciones":
         st.markdown("### 🗄️ Base de Datos — Licitaciones")
@@ -4138,4 +4338,11 @@ elif seccion == "⚙️ Configuración" and "Menores" in tipo_proceso:
 
 
 st.markdown("---")
-st.markdown("<center><small>QUBITS KAM Intelligence v2 | Inteligencia Comercial para Sector Público y Privado</small></center>", unsafe_allow_html=True)
+st.markdown("""
+    <div style="text-align:center;padding:20px 0 8px;margin-top:24px;border-top:0.5px solid var(--color-border-tertiary)">
+        <span style="font-size:11px;color:var(--color-text-secondary);letter-spacing:0.5px">
+            KAM Intelligence v2 &nbsp;·&nbsp; Inteligencia Comercial para Sector Público y Privado
+        </span>
+    </div>
+""", unsafe_allow_html=True)
+
