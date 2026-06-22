@@ -1,0 +1,6 @@
+backups/
+licitaciones.json
+procesos.json
+__pycache__/
+.env
+*.pyc
