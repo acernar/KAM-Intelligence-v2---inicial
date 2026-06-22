@@ -25,11 +25,10 @@ import base64
 #   spreadsheet_id = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
 
 GSHEETS_SPREADSHEET_ID = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
-GSHEETS_ENABLED = False  # Se activa automáticamente si detecta credenciales
 
-def _init_gsheets():
-    """Inicializa el cliente de Google Sheets si hay credenciales disponibles."""
-    global GSHEETS_ENABLED
+@st.cache_resource(ttl=300)
+def _get_gsheets_client():
+    """Inicializa y retorna el cliente de Google Sheets. Retorna None si no hay credenciales."""
     try:
         import gspread
         from google.oauth2.service_account import Credentials
@@ -39,7 +38,6 @@ def _init_gsheets():
             'https://www.googleapis.com/auth/drive'
         ]
 
-        # Intentar cargar desde Streamlit Secrets (nube) o archivo local
         creds_dict = None
 
         # Opción 1: Streamlit Secrets (Streamlit Cloud)
@@ -55,16 +53,14 @@ def _init_gsheets():
             creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
             client = gspread.authorize(creds)
             sh = client.open_by_key(GSHEETS_SPREADSHEET_ID)
-            GSHEETS_ENABLED = True
             return sh
     except Exception:
         pass
     return None
 
-@st.cache_resource(ttl=300)
-def _get_gsheets_client():
-    """Obtiene el cliente de Google Sheets (cacheado 5 minutos)."""
-    return _init_gsheets()
+def _gsheets_activo():
+    """Retorna True si Google Sheets está disponible."""
+    return _get_gsheets_client() is not None
 
 def _leer_hoja(nombre_hoja):
     """Lee una hoja de Google Sheets y retorna lista de dicts."""
@@ -75,7 +71,8 @@ def _leer_hoja(nombre_hoja):
         ws = sh.worksheet(nombre_hoja)
         registros = ws.get_all_records()
         return registros
-    except Exception:
+    except Exception as e:
+        st.sidebar.warning(f"⚠️ Error leyendo hoja '{nombre_hoja}': {e}")
         return None
 
 def _escribir_hoja_completa(nombre_hoja, datos_dict):
@@ -299,10 +296,9 @@ def migrar_procesos_a_archivo_unico():
 
 def cargar_procesos_raw():
     """Carga procesos desde Google Sheets (nube) o JSON local (Mac)."""
-    _get_gsheets_client()
-    if GSHEETS_ENABLED:
+    if _gsheets_activo():
         data = _leer_dict_desde_hoja('procesos', clave_primaria='id')
-        if data is not None:
+        if data:  # Solo usar Sheets si retorna datos reales (no dict vacío)
             return data
     # Fallback a JSON local
     migrar_procesos_a_archivo_unico()
@@ -314,7 +310,7 @@ def cargar_procesos_raw():
 
 def guardar_procesos_raw(data):
     """Guarda procesos en Google Sheets (nube) o JSON local (Mac)."""
-    if GSHEETS_ENABLED:
+    if _gsheets_activo():
         _escribir_hoja_completa('procesos', data)
     _crear_backup(ARCHIVO_PROCESOS)
     with open(ARCHIVO_PROCESOS, 'w', encoding='utf-8') as f:
@@ -512,7 +508,7 @@ ARCHIVO_CONTACTOS = 'crm_contactos.json'
 ARCHIVO_HISTORIAL = 'crm_historial.json'
 
 def cargar_contactos():
-    if GSHEETS_ENABLED:
+    if _gsheets_activo():
         try:
             sh = _get_gsheets_client()
             ws = sh.worksheet('contactos')
@@ -546,7 +542,7 @@ def guardar_contacto(cliente, nombre, cargo, email, telefono):
         'nombre': nombre, 'cargo': cargo, 'email': email, 'telefono': telefono,
         'agregado_el': datetime.now().strftime('%Y-%m-%d %H:%M')
     })
-    if GSHEETS_ENABLED:
+    if _gsheets_activo():
         try:
             sh = _get_gsheets_client()
             ws = sh.worksheet('contactos')
@@ -566,7 +562,7 @@ def eliminar_contacto(cliente, indice):
     data = cargar_contactos()
     if cliente in data and 0 <= indice < len(data[cliente]):
         data[cliente].pop(indice)
-        if GSHEETS_ENABLED:
+        if _gsheets_activo():
             try:
                 sh = _get_gsheets_client()
                 ws = sh.worksheet('contactos')
@@ -582,7 +578,7 @@ def eliminar_contacto(cliente, indice):
             json.dump(data, f, ensure_ascii=False, indent=2)
 
 def cargar_historial():
-    if GSHEETS_ENABLED:
+    if _gsheets_activo():
         try:
             sh = _get_gsheets_client()
             ws = sh.worksheet('historial')
@@ -615,7 +611,7 @@ def guardar_historial(cliente, nota, proxima_accion):
         'fecha': datetime.now().strftime('%Y-%m-%d %H:%M'),
         'nota': nota, 'proxima_accion': proxima_accion
     })
-    if GSHEETS_ENABLED:
+    if _gsheets_activo():
         try:
             sh = _get_gsheets_client()
             ws = sh.worksheet('historial')
@@ -699,11 +695,9 @@ def _migrar_licitaciones_legacy_si_corresponde():
 
 def cargar_licitaciones_raw():
     """Carga licitaciones desde Google Sheets (nube) o JSON local (Mac)."""
-    # Intentar Google Sheets primero
-    _get_gsheets_client()  # Inicializa GSHEETS_ENABLED
-    if GSHEETS_ENABLED:
+    if _gsheets_activo():
         data = _leer_dict_desde_hoja('licitaciones', clave_primaria='id')
-        if data is not None:
+        if data:  # Solo usar Sheets si retorna datos reales (no dict vacío)
             return data
     # Fallback a JSON local
     _migrar_licitaciones_legacy_si_corresponde()
@@ -742,7 +736,7 @@ def _crear_backup(archivo):
 
 def guardar_licitaciones_raw(data):
     """Guarda licitaciones en Google Sheets (nube) o JSON local (Mac)."""
-    if GSHEETS_ENABLED:
+    if _gsheets_activo():
         _escribir_hoja_completa('licitaciones', data)
     # Siempre guardar también en JSON local como respaldo
     _crear_backup(ARCHIVO_LICITACIONES)
@@ -1190,6 +1184,12 @@ st.markdown("---")
 # ==================== SIDEBAR ====================
 with st.sidebar:
     st.title("🔧 NAVEGACIÓN")
+    
+    # Diagnóstico de Google Sheets
+    if _gsheets_activo():
+        st.caption("☁️ Google Sheets activo")
+    else:
+        st.caption("💾 Modo local (JSON)")
     
     # Selector de tipo de proceso
     tipo_proceso = st.radio("Tipo de Proceso:", ["📊 Menores (≤8 UIT)", "📑 Licitaciones (>8 UIT)"], 
