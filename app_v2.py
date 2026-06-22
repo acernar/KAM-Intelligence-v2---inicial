@@ -1457,7 +1457,16 @@ with st.sidebar:
 
 # ==================== SECCIÓN 1: DASHBOARD ====================
 if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
-    st.markdown("### 📊 Dashboard Ejecutivo — Menores ≤8 UIT")
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Dashboard · Menores ≤8 UIT</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Resumen ejecutivo del portafolio de procesos menores</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
     col_refresh, col_spacer = st.columns([1, 5])
     with col_refresh:
@@ -1489,12 +1498,20 @@ if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
     with col1:
         # Estado
         estado_counts = df['estado'].value_counts()
+        PALETA_M = ['#7F77DD', '#1D9E75', '#D85A30', '#BA7517', '#378ADD', '#888780', '#F0997B']
         fig = px.pie(values=estado_counts.values, names=estado_counts.index,
-                     title="📊 Distribución por Estado",
-                     color_discrete_sequence=['#00D4FF', '#FF2D78', '#4F7CFF', '#00E5A0', '#FF8C42', '#A78BFA', '#F59E0B'], template='plotly_dark')
+                     title="Distribución por Estado",
+                     color_discrete_sequence=PALETA_M,
+                     hole=0.4,
+                     template='plotly_white')
+        fig.update_layout(margin=dict(t=40, b=10, l=10, r=10), legend=dict(font=dict(size=10)), title_font_size=13)
+        fig.update_traces(
+            textfont_size=11,
+            hovertemplate="<b>%{label}</b><br>%{value} procesos<br>%{percent}<extra></extra>"
+        )
         st.plotly_chart(fig, use_container_width=True)
-        
-        estado_click = st.selectbox("🔍 Ver procesos de un estado:", ["—"] + estado_counts.index.tolist(), key="estado_drill")
+
+        estado_click = st.selectbox("Ver procesos por estado:", ["—"] + estado_counts.index.tolist(), key="estado_drill")
         if estado_click != "—":
             st.dataframe(
                 df[df['estado'] == estado_click][['id', 'entidad', 'region', 'subcategoria', 'resultadoAdjudicacion']],
@@ -1507,7 +1524,7 @@ if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
         fig = px.bar(x=resultado_counts.index, y=resultado_counts.values,
                      title="✅ Resultados de Adjudicación",
                      labels={'x': 'Resultado', 'y': 'Procesos'},
-                     color_discrete_sequence=['#00D4FF', '#FF2D78', '#4F7CFF', '#00E5A0', '#FF8C42', '#A78BFA', '#F59E0B'], template='plotly_dark')
+                     color_discrete_sequence=['#7F77DD','#1D9E75','#D85A30','#BA7517','#378ADD','#888780','#F0997B','#5DCAA5'], template='plotly_white')
         st.plotly_chart(fig, use_container_width=True)
         
         resultado_click = st.selectbox("🔍 Ver procesos de un resultado:", ["—"] + resultado_counts.index.tolist(), key="resultado_drill")
@@ -1524,7 +1541,8 @@ if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
         fig = px.bar(x=regiones.values, y=regiones.index, orientation='h',
                       title="🌍 Top Regiones",
                       labels={'x': 'Procesos', 'y': 'Región'},
-                      color_discrete_sequence=['#5B6FFF'], template='plotly_dark')
+                      color_discrete_sequence=['#7F77DD','#1D9E75','#D85A30','#BA7517','#378ADD','#888780','#F0997B','#5DCAA5'], template='plotly_white')
+        fig.update_traces(hovertemplate="%{x:,.0f}<extra></extra>")
         fig.update_layout(yaxis={'categoryorder': 'total ascending'})
         st.plotly_chart(fig, use_container_width=True)
         
@@ -1540,7 +1558,8 @@ if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
         fig = px.bar(x=subcats.values, y=subcats.index, orientation='h',
                       title="🎯 Top Servicios Demandados",
                       labels={'x': 'Procesos', 'y': 'Servicio'},
-                      color_discrete_sequence=['#7B8FFF'], template='plotly_dark')
+                      color_discrete_sequence=['#7F77DD','#1D9E75','#D85A30','#BA7517','#378ADD','#888780','#F0997B','#5DCAA5'], template='plotly_white')
+        fig.update_traces(hovertemplate="%{x:,.0f}<extra></extra>")
         fig.update_layout(yaxis={'categoryorder': 'total ascending'})
         st.plotly_chart(fig, use_container_width=True)
         
@@ -1859,8 +1878,16 @@ elif "Menores" in tipo_proceso and seccion == "🗄️ Base de Datos":
 
 # ==================== SECCIÓN 2: CALENDARIO DE RENOVACIONES ====================
 elif "Menores" in tipo_proceso and seccion == "📅 Calendario de Renovaciones":
-    st.markdown("### 📅 Calendario de Renovaciones")
-    st.caption("⚠️ = fecha estimada automáticamente (12 meses por defecto) · ✅ = fecha confirmada por ti")
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Calendario de Renovaciones</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Alerta temprana de vencimientos — ⚠️ estimado · ✅ confirmado</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     adjudicados = df[df['resultadoAdjudicacion'] == 'Adjudicado'].copy()
     
@@ -2014,7 +2041,7 @@ elif "Menores" in tipo_proceso and seccion == "📅 Calendario de Renovaciones":
 
 # ==================== SECCIÓN 3: CRM ====================
 elif "Menores" in tipo_proceso and seccion == "👥 CRM y Seguimiento":
-    st.markdown("### 👥 CRM - Gestión de Clientes")
+    st.markdown("#### CRM - Gestión de Clientes")
     
     contactos_data = cargar_contactos()
     historial_data = cargar_historial()
@@ -2034,7 +2061,7 @@ elif "Menores" in tipo_proceso and seccion == "👥 CRM y Seguimiento":
     if 'crm_cliente_activo' not in st.session_state:
         st.session_state.crm_cliente_activo = clientes_df.index[0]
     
-    tab1, tab2, tab3 = st.tabs(["📋 Clientes", "📞 Contactos", "📈 Historial"])
+    tab1, tab2, tab3 = st.tabs(["Entidades", "Contactos", "Historial"])
     
     with tab1:
         st.markdown("#### Base de Clientes")
@@ -2151,7 +2178,7 @@ elif "Menores" in tipo_proceso and seccion == "👥 CRM y Seguimiento":
 
 # ==================== SECCIÓN 3B: ANÁLISIS DE COMPETENCIA ====================
 elif "Menores" in tipo_proceso and seccion == "💼 Análisis de Competencia":
-    st.markdown("### 💼 Análisis de Competencia — Proveedores Ganadores")
+    st.markdown("#### Análisis de Competencia — Proveedores Ganadores")
     
     adjudicados_comp = df[(df['resultadoAdjudicacion'] == 'Adjudicado') & (df['proveedor'] != 'SIN DEFINIR') & (df['proveedor'] != 'DESIERTO')]
     
@@ -2173,8 +2200,9 @@ elif "Menores" in tipo_proceso and seccion == "💼 Análisis de Competencia":
     fig = px.bar(competencia, x='proveedor', y='monto',
                  title="Montos Adjudicados por Proveedor",
                  labels={'monto': 'Monto (S/)', 'proveedor': 'Proveedor'},
-                 color_discrete_sequence=['#00D4FF', '#FF2D78', '#4F7CFF', '#00E5A0', '#FF8C42', '#A78BFA', '#F59E0B'],
-                 template='plotly_dark')
+                 color_discrete_sequence=['#7F77DD','#1D9E75','#D85A30','#BA7517','#378ADD','#888780','#F0997B','#5DCAA5'],
+                 template='plotly_white')
+    fig.update_traces(hovertemplate="%{x:,.0f}<extra></extra>")
     fig.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(fig, use_container_width=True)
     
@@ -2193,7 +2221,16 @@ elif "Menores" in tipo_proceso and seccion == "💼 Análisis de Competencia":
 
 # ==================== SECCIÓN 4: GENERADOR DE DOCUMENTOS ====================
 elif "Menores" in tipo_proceso and seccion == "📝 Generador de Documentos":
-    st.markdown("### 📝 Generador de Documentos")
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Generador de Documentos</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Plantillas formales para cartas, consultas y resúmenes de proceso</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     tipo_doc = st.selectbox("Tipo de documento:", [
         "Carta de Presentación",
@@ -2292,7 +2329,16 @@ Esta propuesta tiene validez de 30 días.
 
 # ==================== SECCIÓN 5: GENERADOR DE PROPUESTAS TÉCNICAS ====================
 elif "Menores" in tipo_proceso and seccion == "💼 Generador de Propuestas":
-    st.markdown("### 💼 Generador de Propuestas Técnicas")
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Generador de Propuestas</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Propuestas técnicas estructuradas para procesos menores ≤8 UIT</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     proceso_id = st.selectbox("Selecciona proceso SEACE:", df['id'].unique())
     
@@ -2397,7 +2443,7 @@ Garantía: 12 meses post-implementación
 
 # ==================== SECCIÓN 6: EXPORTAR DATOS ====================
 elif "Menores" in tipo_proceso and seccion == "📊 Exportar Datos":
-    st.markdown("### 📊 Exportar Datos y Reportes")
+    st.markdown("#### Exportar Datos y Reportes")
     
     opcion_export = st.selectbox("Tipo de exportación:", [
         "Todos los procesos (Excel)",
@@ -2455,7 +2501,16 @@ elif "Menores" in tipo_proceso and seccion == "📊 Exportar Datos":
 
 # ==================== SECCIÓN 7: OPORTUNIDADES ====================
 elif "Menores" in tipo_proceso and seccion == "🎯 Oportunidades":
-    st.markdown("### 🎯 Oportunidades Críticas y Estratégicas")
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Oportunidades Estratégicas · Menores</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Procesos vencidos, próximos a renovar y clientes recurrentes</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Procesos vencidos
     evaluacion = df[(df['estado'] == 'En Evaluación') | (df['estado'] == 'Vigente')].copy()
@@ -2494,7 +2549,16 @@ elif "Menores" in tipo_proceso and seccion == "🎯 Oportunidades":
 
 if "Licitaciones" in tipo_proceso:
     if seccion == "📊 Dashboard de Licitaciones":
-        st.markdown("### 📊 Dashboard · Licitaciones >8 UIT")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Dashboard · Licitaciones >8 UIT</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Inteligencia comercial del portafolio de licitaciones públicas</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
         col_refresh, col_spacer = st.columns([1, 5])
         with col_refresh:
@@ -2578,7 +2642,10 @@ if "Licitaciones" in tipo_proceso:
                     legend=dict(font=dict(size=10)),
                     title_font_size=13
                 )
-                fig.update_traces(textfont_size=11)
+                fig.update_traces(
+                    textfont_size=11,
+                    hovertemplate="<b>%{label}</b><br>%{value} procesos<br>%{percent}<extra></extra>"
+                )
                 st.plotly_chart(fig, use_container_width=True)
 
                 tipo_click2 = st.selectbox("Ver licitaciones por tipo:", ["—"] + tipo_lic_counts.index.tolist(), key="tipo_lic_drill")
@@ -2636,12 +2703,21 @@ if "Licitaciones" in tipo_proceso:
 
     
     elif seccion == "🗄️ Base de Datos de Licitaciones":
-        st.markdown("### 🗄️ Base de Datos — Licitaciones")
-        st.caption("Una sola base de datos editable: agrega licitaciones nuevas y edita cualquiera de las ya registradas.")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Base de Datos · Licitaciones</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Parser SEACE, formulario guiado y gestión completa de licitaciones</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+        
         
         nuevas_raw = cargar_licitaciones_raw()
         
-        tab1, tab2, tab3, tab4 = st.tabs(["📄 Pegar texto SEACE", "➕ Formulario guiado", "📋 Pegar JSON", "🗂️ Todas las Licitaciones"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Pegar texto SEACE", "Formulario guiado", "Pegar JSON", "Todas las licitaciones"])
         
         # TAB 1: Parser de texto SEACE
         with tab1:
@@ -2964,8 +3040,17 @@ if "Licitaciones" in tipo_proceso:
                     st.caption(f"Última modificación: {lic.get('_agregada_el', 'N/D')}")
     
     elif seccion == "👥 CRM y Seguimiento":
-        st.markdown("### 👥 CRM - Gestión de Entidades Públicas")
-        st.caption("Administra contactos, notas de interacciones y seguimiento de procesos por entidad licitante.")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">CRM · Entidades Públicas</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Contactos, historial de interacciones y seguimiento por entidad licitante</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+        
         
         contactos_data = cargar_contactos()
         historial_data = cargar_historial()
@@ -2985,7 +3070,7 @@ if "Licitaciones" in tipo_proceso:
         if 'crm_entidad_activa' not in st.session_state:
             st.session_state.crm_entidad_activa = entidades_df.index[0] if len(entidades_df) > 0 else ''
         
-        tab1, tab2, tab3 = st.tabs(["📋 Entidades", "📞 Contactos", "📈 Historial"])
+        tab1, tab2, tab3 = st.tabs(["Entidades", "Contactos", "Historial"])
         
         with tab1:
             st.markdown("#### Base de Entidades Licitantes")
@@ -3111,8 +3196,17 @@ if "Licitaciones" in tipo_proceso:
                 st.info("Agrega licitaciones primero para ver entidades.")
     
     elif seccion == "📅 Calendario de Renovaciones":
-        st.markdown("### 📅 Calendario de Renovaciones — Alertas de Vencimiento")
-        st.caption("Monitorea fechas de fin de contrato para anticipar nuevas oportunidades de negocio.")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Calendario de Renovaciones</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Monitorea vencimientos de contratos para anticipar nuevas licitaciones</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+        
         
         # Filtrar solo licitaciones con estado "Contrato Firmado" y fecha de fin conocida
         renovaciones = df[(df['estado'] == 'Contrato Firmado') & (df['fin_contrato'].notna() & (df['fin_contrato'] != ''))].copy()
@@ -3201,8 +3295,17 @@ if "Licitaciones" in tipo_proceso:
             st.info("Aún no hay contratos firmados con fecha de fin registrada. Agrega licitaciones con estado 'Contrato Firmado' e ingresa las fechas de inicio y fin.")
     
     elif seccion == "🎯 Oportunidades":
-        st.markdown("### 🎯 Oportunidades Estratégicas — Licitaciones")
-        st.caption("Inteligencia comercial basada en tu base de datos: contratos por renovar, procesos activos y entidades clave.")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Oportunidades Estratégicas · Licitaciones</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Procesos activos, renovaciones próximas y entidades recurrentes</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+        
 
         if len(df) == 0:
             st.info("Aún no hay licitaciones registradas.")
@@ -3311,8 +3414,17 @@ if "Licitaciones" in tipo_proceso:
                 st.info("Aún no hay entidades con más de una licitación registrada.")
 
     elif seccion == "💼 Competencia en Licitaciones":
-        st.markdown("### 💼 Competencia en Licitaciones — Ranking de Postores")
-        st.caption("Tabla consolidada de empresas que postulan a las licitaciones que registraste, con historial y tasa de éxito reportada por SEACE.")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Competencia en Licitaciones</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Ranking de postores y análisis de tasa de éxito por empresa</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+        
         
         if len(df) == 0 or 'postores' not in df.columns or df['postores'].apply(lambda x: isinstance(x, list) and len(x) > 0).sum() == 0:
             st.info("Aún no hay licitaciones con lista de postores registrada. Usa la pestaña '📄 Pegar texto SEACE' en Base de Datos — el parser extrae automáticamente la lista completa de postores cuando está presente en el texto copiado.")
@@ -3357,7 +3469,7 @@ if "Licitaciones" in tipo_proceso:
             fig = px.bar(ranking.head(15), x='empresa', y='veces_postulo_en_tu_base',
                         title="Frecuencia de Participación (en licitaciones que registraste)",
                         labels={'veces_postulo_en_tu_base': 'Veces que postuló', 'empresa': 'Empresa'},
-                        color_discrete_sequence=['#5B6FFF'])
+                        color_discrete_sequence=['#7F77DD','#1D9E75','#D85A30','#BA7517','#378ADD','#888780','#F0997B','#5DCAA5'])
             fig.update_layout(xaxis_tickangle=-45)
             st.plotly_chart(fig, use_container_width=True)
             
@@ -3369,7 +3481,16 @@ if "Licitaciones" in tipo_proceso:
                     st.dataframe(detalle_empresa, use_container_width=True)
     
     elif seccion == "📝 Generador de Documentos":
-        st.markdown("### 📝 Generador de Documentos — Licitaciones Públicas")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Generador de Documentos</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Plantillas formales adaptadas a normativa OSCE y Ley 30225</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
         st.caption("Genera documentos formales adaptados a la normativa OSCE y Ley 30225 para procesos >8 UIT.")
 
         if len(df) == 0:
@@ -3623,7 +3744,16 @@ NORMATIVA APLICABLE
             )
 
     elif seccion == "💼 Generador de Propuestas":
-        st.markdown("### 💼 Generador de Propuestas Técnicas — Licitaciones")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Generador de Propuestas</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Propuestas técnicas estructuradas para licitaciones >8 UIT</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
         st.caption("Genera propuestas técnicas estructuradas según la normativa OSCE para procesos >8 UIT.")
 
         if len(df) == 0:
@@ -3863,7 +3993,16 @@ Revisar y completar los campos marcados con [COMPLETAR] antes de presentar.
                 st.info("💡 Tip: Descarga el .txt y ábrelo en Word para darle formato final antes de presentar.")
 
     elif seccion == "🤖 Inteligencia Artificial":
-        st.markdown("### 🤖 Inteligencia Artificial — Análisis de Oportunidades")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Inteligencia Artificial</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Motor Claude · Análisis estratégico de licitaciones y mercado público peruano</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
         st.caption("Motor de IA basado en Claude (Anthropic) para análisis estratégico de licitaciones públicas peruanas.")
 
         # ── Configuración de API Key ──────────────────────────────────────────
@@ -4238,7 +4377,16 @@ MERCADO: Licitaciones públicas peruanas >8 UIT (Ley 30225)
                         st.rerun()
 
     elif seccion == "📊 Exportar Licitaciones":
-        st.markdown("### 📊 Exportar Licitaciones")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Exportar Licitaciones</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Descarga el portafolio completo de licitaciones en Excel o CSV</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
         
         if len(df) == 0:
             st.info("No hay licitaciones para exportar.")
@@ -4262,7 +4410,16 @@ MERCADO: Licitaciones públicas peruanas >8 UIT (Ley 30225)
             )
 
     elif seccion == "⚙️ Configuración":
-        st.markdown("### ⚙️ Configuración del Sistema — Licitaciones")
+        st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Configuración del Sistema</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Estado de conexiones, estadísticas y configuración de la plataforma</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
         col1, col2 = st.columns(2)
 
@@ -4306,35 +4463,65 @@ MERCADO: Licitaciones públicas peruanas >8 UIT (Ley 30225)
 # ==================== SECCIÓN 8: CONFIGURACIÓN ====================
 
 elif seccion == "⚙️ Configuración" and "Menores" in tipo_proceso:
-    st.markdown("### ⚙️ Configuración del Sistema")
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Configuración del Sistema</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Estado de conexiones, estadísticas y configuración de la plataforma</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
-    
+
+    col1, col2 = st.columns(2)
+
     with col1:
-        st.markdown("#### 📊 Estadísticas")
-        st.info(f"""
-        **Total Procesos:** {len(df)}
-        **Clientes Únicos:** {df['entidad'].nunique()}
-        **Regiones:** {df['region'].nunique()}
-        **Servicios:** {df['subcategoria'].nunique()}
-        **Mercado Total:** S/ {df['montoAdjudicado'].sum():,.2f}
-        """)
-    
+        st.markdown('<div class="km-card">', unsafe_allow_html=True)
+        st.markdown('<div class="km-card-title">Estadísticas del portafolio</div>', unsafe_allow_html=True)
+        if len(df) > 0:
+            stats_cfg = [
+                ("Total procesos", len(df)),
+                ("Clientes únicos", df['entidad'].nunique()),
+                ("Regiones", df['region'].nunique()),
+                ("Servicios distintos", df['subcategoria'].nunique()),
+                ("Mercado total", f"S/ {df['montoAdjudicado'].sum():,.0f}"),
+            ]
+            for lbl, val in stats_cfg:
+                st.markdown(f'''<div style="display:flex;justify-content:space-between;padding:7px 0;
+                    border-bottom:0.5px solid var(--color-border-tertiary);font-size:12px">
+                    <span style="color:var(--color-text-secondary)">{lbl}</span>
+                    <span style="font-weight:500;color:var(--color-text-primary)">{val}</span>
+                </div>''', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
     with col2:
-        st.markdown("#### 📈 Desempeño")
-        tasa_exito = len(df[df['resultadoAdjudicacion'] == 'Adjudicado']) / len(df) * 100
-        st.info(f"""
-        **Tasa de Éxito:** {tasa_exito:.1f}%
-        **Adjudicados:** {len(df[df['resultadoAdjudicacion'] == 'Adjudicado'])}
-        **Desiertos:** {len(df[df['resultadoAdjudicacion'] == 'DESIERTO'])}
-        **Avance vs Cuota:** {(df['montoAdjudicado'].sum()/500000*100):.1f}%
-        """)
-    
-    st.markdown("---")
-    st.markdown("#### 🔧 Información Técnica")
-    st.text(f"Última actualización: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-    st.text(f"Versión: 2.0 (completa)")
-    st.text("Estado: ✅ Operativo con todos los módulos")
+        st.markdown('<div class="km-card">', unsafe_allow_html=True)
+        st.markdown('<div class="km-card-title">Desempeño comercial</div>', unsafe_allow_html=True)
+        if len(df) > 0:
+            adj_cfg = len(df[df['resultadoAdjudicacion'] == 'Adjudicado'])
+            des_cfg = len(df[df['resultadoAdjudicacion'] == 'DESIERTO'])
+            tasa_cfg = adj_cfg / len(df) * 100 if len(df) > 0 else 0
+            avance_cfg = df['montoAdjudicado'].sum() / 500000 * 100
+            gs_status = ("Conectado", "#0F6E56") if _gsheets_activo() else ("Modo local", "#854F0B")
+            stats2_cfg = [
+                ("Tasa de éxito", f"{tasa_cfg:.1f}%", "var(--color-text-primary)"),
+                ("Adjudicados", adj_cfg, "#0F6E56"),
+                ("Desiertos", des_cfg, "#993C1D"),
+                ("Avance vs cuota", f"{avance_cfg:.1f}%", "var(--color-text-primary)"),
+                ("Google Sheets", gs_status[0], gs_status[1]),
+                ("Última actualización", datetime.now().strftime('%d/%m/%Y %H:%M'), "var(--color-text-secondary)"),
+            ]
+            for lbl, val, color in stats2_cfg:
+                st.markdown(f'''<div style="display:flex;justify-content:space-between;padding:7px 0;
+                    border-bottom:0.5px solid var(--color-border-tertiary);font-size:12px">
+                    <span style="color:var(--color-text-secondary)">{lbl}</span>
+                    <span style="font-weight:500;color:{color}">{val}</span>
+                </div>''', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
 
 
 st.markdown("---")
