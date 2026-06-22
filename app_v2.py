@@ -474,10 +474,42 @@ def cargar_procesos():
             df[col] = None
     
     # Convertir columnas numéricas (vienen como string desde Google Sheets)
-    cols_numericas = ['montoAdjudicado', 'montoBase', 'diasVencidos', 'plazoMeses']
+    cols_numericas = ['montoAdjudicado', 'montoBase', 'plazoMeses']
     for col in cols_numericas:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+    # Recalcular diasVencidos dinámicamente con la fecha actual
+    # Usa fecha_renovacion_confirmada si existe en renovaciones_editadas,
+    # si no usa adjudicacion + plazoMeses como estimación
+    hoy = pd.Timestamp(datetime.now().date())
+    renovaciones = cargar_renovaciones_editadas()
+
+    def calcular_dias_vencidos(row):
+        pid = row.get('id', '')
+        # Opción 1: fecha confirmada manualmente
+        if pid in renovaciones:
+            fecha_str = renovaciones[pid].get('fecha_renovacion_confirmada', '')
+            if fecha_str:
+                try:
+                    fecha = pd.Timestamp(fecha_str)
+                    return max(0, (hoy - fecha).days)
+                except Exception:
+                    pass
+        # Opción 2: adjudicacion + plazoMeses estimado
+        adj = row.get('adjudicacion', '') or row.get('fechaAdjudicacion', '')
+        plazo = row.get('plazoMeses', 0) or row.get('plazo_meses', 0)
+        try:
+            plazo = int(float(str(plazo))) if plazo else 0
+            if adj and plazo > 0:
+                fecha_adj = pd.Timestamp(str(adj))
+                fecha_venc = fecha_adj + pd.DateOffset(months=plazo)
+                return max(0, (hoy - fecha_venc).days)
+        except Exception:
+            pass
+        return 0
+
+    df['diasVencidos'] = df.apply(calcular_dias_vencidos, axis=1)
     
     return df
 
