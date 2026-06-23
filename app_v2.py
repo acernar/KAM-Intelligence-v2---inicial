@@ -382,10 +382,26 @@ st.markdown("""<style>
 .sb-mini-val { font-size: 16px; font-weight: 500; color: var(--color-text-primary); }
 .sb-mini-lbl { font-size: 9px; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
 
-/* STREAMLIT OVERRIDES */
-.stDataFrame { border-radius: var(--border-radius-md); overflow: hidden; }
-[data-testid="stMetricValue"] { font-weight: 500; }
-div[data-testid="stSidebarContent"] > div:first-child { padding-top: 0.5rem; }
+/* ── SIDEBAR — ESTILO LIMPIO ─────────────────────────── */
+section[data-testid="stSidebar"] { padding-top: 0.5rem; }
+section[data-testid="stSidebar"] h1 {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    letter-spacing: 1px !important;
+    text-transform: uppercase !important;
+    color: var(--color-text-secondary) !important;
+}
+/* Item activo del radio con acento púrpura */
+section[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) span {
+    color: #534AB7 !important;
+    font-weight: 600 !important;
+}
+/* Separadores de sección — no clickeables */
+section[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input[value*="—"]) {
+    pointer-events: none !important;
+    opacity: 0.5 !important;
+    font-size: 10px !important;
+}
 
 </style>""", unsafe_allow_html=True)
 
@@ -1387,25 +1403,26 @@ with st.sidebar:
         st.caption("💾 Modo local (JSON)")
     
     # Selector de tipo de proceso
-    tipo_proceso = st.radio("Tipo de Proceso:", ["📊 Menores (≤8 UIT)", "📑 Licitaciones (>8 UIT)"], 
-                            label_visibility="collapsed")
-    
-    # Asignar datos según tipo de proceso
+    tipo_proceso = st.radio("", ["Menores (≤8 UIT)", "Licitaciones (>8 UIT)"],
+                            horizontal=True, label_visibility="collapsed")
+
+    st.divider()
+
     if "Menores" in tipo_proceso:
         df = df_menores
         modulos_disponibles = [
             "📊 Dashboard",
             "🗄️ Base de Datos",
-            "📅 Calendario de Renovaciones",
             "👥 CRM y Seguimiento",
+            "📅 Calendario de Renovaciones",
+            "🎯 Oportunidades",
             "💼 Análisis de Competencia",
             "📝 Generador de Documentos",
             "💼 Generador de Propuestas",
             "📊 Exportar Datos",
-            "🎯 Oportunidades",
-            "⚙️ Configuración"
+            "⚙️ Configuración",
         ]
-    else:  # Licitaciones
+    else:
         df = df_licitaciones
         modulos_disponibles = [
             "📊 Dashboard de Licitaciones",
@@ -1414,20 +1431,17 @@ with st.sidebar:
             "📅 Calendario de Renovaciones",
             "🎯 Oportunidades",
             "💼 Competencia en Licitaciones",
+            "🤖 Inteligencia Artificial",
             "📝 Generador de Documentos",
             "💼 Generador de Propuestas",
-            "🤖 Inteligencia Artificial",
             "📊 Exportar Licitaciones",
-            "⚙️ Configuración"
+            "⚙️ Configuración",
         ]
-    
-    st.markdown("---")
-    
-    seccion = st.radio("Selecciona módulo:", modulos_disponibles,
-                        label_visibility="collapsed")
-    
-    st.markdown("---")
-    
+
+    seccion = st.radio("Módulo:", modulos_disponibles, label_visibility="collapsed")
+
+    st.divider()
+
     # KPIs rápidos en sidebar
     st.markdown("---")
     if "Menores" in tipo_proceso:
