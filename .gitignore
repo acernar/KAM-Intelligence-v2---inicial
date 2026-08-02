@@ -5,3 +5,4 @@ __pycache__/
 .env
 *.pyc
 gsheets_credentials.json
+.DS_Store
