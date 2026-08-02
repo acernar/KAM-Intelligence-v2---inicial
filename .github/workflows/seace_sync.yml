@@ -1,9 +1,10 @@
 name: SEACE Sync Diario — KAM Intelligence
 
 on:
-  # Corre cada día a 12:00 UTC = 7:00am Lima (UTC-5)
+  # Corre cada día a las 7:00am y 12:00pm de Lima (UTC-5)
   schedule:
     - cron: '0 12 * * *'
+    - cron: '0 17 * * *'
 
   # Permite ejecutarlo manualmente desde GitHub
   workflow_dispatch:
