@@ -41,7 +41,7 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install requests gspread google-auth
+          pip install requests gspread google-auth beautifulsoup4
 
       - name: Ejecutar sync SEACE
         env:
