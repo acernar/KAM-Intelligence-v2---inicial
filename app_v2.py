@@ -62,6 +62,178 @@ def _gsheets_activo():
     """Retorna True si Google Sheets está disponible."""
     return _get_gsheets_client() is not None
 
+def _get_gmail_config():
+    """Obtiene Gmail desde variables de entorno o Streamlit Secrets sin exponer valores."""
+    config = {
+        'from': os.environ.get('GMAIL_FROM', ''),
+        'to': os.environ.get('GMAIL_TO', ''),
+        'pass': os.environ.get('GMAIL_APP_PASS', ''),
+    }
+    try:
+        gmail_secrets = st.secrets.get('gmail', {})
+        config['from'] = config['from'] or st.secrets.get('GMAIL_FROM', '') or gmail_secrets.get('from', '')
+        config['to'] = config['to'] or st.secrets.get('GMAIL_TO', '') or gmail_secrets.get('to', '')
+        config['pass'] = config['pass'] or st.secrets.get('GMAIL_APP_PASS', '') or gmail_secrets.get('app_password', '')
+    except Exception:
+        pass
+    return config
+
+def _get_ai_api_key(proveedor):
+    """Obtiene credenciales de IA desde entorno o Streamlit Secrets."""
+    env_name = 'OPENAI_API_KEY' if proveedor == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
+    key = os.environ.get(env_name, '')
+    try:
+        ai_secrets = st.secrets.get('ai', {})
+        key = key or st.secrets.get(env_name, '')
+        if not key:
+            secret_name = 'openai_api_key' if proveedor == 'ChatGPT (OpenAI)' else 'anthropic_api_key'
+            key = ai_secrets.get(secret_name, '')
+    except Exception:
+        pass
+    return str(key).strip()
+
+def _extraer_texto_openai(data):
+    """Extrae el texto de la respuesta JSON de Responses API."""
+    textos = []
+    for item in data.get('output', []):
+        if item.get('type') != 'message':
+            continue
+        for contenido in item.get('content', []):
+            if contenido.get('type') in ('output_text', 'text') and contenido.get('text'):
+                textos.append(contenido['text'])
+    return '\n'.join(textos).strip()
+
+def consultar_ia(proveedor, sistema, entrada, max_tokens=2400):
+    """Cliente común para ChatGPT y Claude; retorna (texto, error)."""
+    import urllib.request
+    import urllib.error
+
+    api_key = _get_ai_api_key(proveedor)
+    if not api_key:
+        variable = 'OPENAI_API_KEY' if proveedor == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
+        return None, f"Falta configurar {variable} en los secretos de la aplicación."
+
+    mensajes = entrada if isinstance(entrada, list) else [{'role': 'user', 'content': str(entrada)}]
+    if proveedor == 'ChatGPT (OpenAI)':
+        payload = {
+            'model': 'gpt-5.6',
+            'instructions': sistema,
+            'input': mensajes,
+            'max_output_tokens': max_tokens,
+        }
+        url = 'https://api.openai.com/v1/responses'
+        headers = {
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        }
+    else:
+        payload = {
+            'model': 'claude-sonnet-4-6',
+            'max_tokens': max_tokens,
+            'system': sistema,
+            'messages': mensajes,
+        }
+        url = 'https://api.anthropic.com/v1/messages'
+        headers = {
+            'x-api-key': api_key,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json',
+        }
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode('utf-8'),
+        headers=headers,
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=90) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        texto = _extraer_texto_openai(data) if proveedor == 'ChatGPT (OpenAI)' else data['content'][0]['text']
+        return (texto, None) if texto else (None, 'La IA respondió sin texto.')
+    except urllib.error.HTTPError as e:
+        detalle = e.read().decode('utf-8', errors='replace')
+        return None, f"Error del proveedor ({e.code}): {detalle[:500]}"
+    except Exception as e:
+        return None, str(e)
+
+def guardar_analisis_ia(proceso_id, tipo_proceso, tipo_analisis, proveedor, respuesta):
+    """Persiste análisis en Google Sheets o JSON local para reutilizarlo en Forecast."""
+    match_score = re.search(r'(?:PUNTAJE(?:\s+DE\s+OPORTUNIDAD)?|SCORE)\s*[:\-]?\s*(\d{1,3})', respuesta, re.I)
+    puntaje = min(100, int(match_score.group(1))) if match_score else ''
+    match_decision = re.search(r'\b(NO[\s-]?GO|GO|REVISAR)\b', respuesta, re.I)
+    decision = match_decision.group(1).upper().replace(' ', '-').replace('NO-GO', 'NO-GO') if match_decision else ''
+    registro = {
+        'id_analisis': f"IA-{datetime.now().strftime('%Y%m%d%H%M%S%f')}",
+        'proceso_id': str(proceso_id),
+        'tipo_proceso': tipo_proceso,
+        'tipo_analisis': tipo_analisis,
+        'proveedor_ia': proveedor,
+        'fecha_analisis': datetime.now().isoformat(timespec='seconds'),
+        'puntaje_oportunidad': puntaje,
+        'decision': decision,
+        'respuesta': respuesta,
+    }
+    if _gsheets_activo():
+        try:
+            sh = _get_gsheets_client()
+            try:
+                ws = sh.worksheet('ia_analisis')
+            except Exception:
+                ws = sh.add_worksheet(title='ia_analisis', rows=1000, cols=9)
+                ws.append_row(list(registro.keys()), value_input_option='RAW')
+            ws.append_row(list(registro.values()), value_input_option='RAW')
+            return True
+        except Exception:
+            return False
+    try:
+        ruta = 'ia_analisis.json'
+        datos = []
+        if os.path.exists(ruta):
+            with open(ruta, 'r', encoding='utf-8') as f:
+                datos = json.load(f)
+        datos.append(registro)
+        with open(ruta, 'w', encoding='utf-8') as f:
+            json.dump(datos, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+def cargar_analisis_ia():
+    """Carga el historial del Copiloto KAM."""
+    if _gsheets_activo():
+        registros = _leer_hoja('ia_analisis')
+        return registros or []
+    try:
+        if os.path.exists('ia_analisis.json'):
+            with open('ia_analisis.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return []
+
+def mostrar_historial_ia(tipo_contiene):
+    """Muestra análisis persistidos sin revelar información sensible."""
+    historial = [r for r in cargar_analisis_ia() if tipo_contiene.lower() in str(r.get('tipo_proceso', '')).lower()]
+    if not historial:
+        return
+    st.markdown("---")
+    st.markdown("#### 🧠 Memoria del Copiloto")
+    st.caption("Análisis recientes guardados para seguimiento y Forecast.")
+    columnas = ['fecha_analisis', 'proceso_id', 'tipo_analisis', 'puntaje_oportunidad', 'decision', 'proveedor_ia']
+    vista = pd.DataFrame(historial)
+    columnas = [c for c in columnas if c in vista.columns]
+    st.dataframe(vista[columnas].tail(20).iloc[::-1], use_container_width=True, hide_index=True)
+
+MARCO_IA_KAM = """
+Usa como marco vigente la Ley N.° 32069, Ley General de Contrataciones Públicas, y su Reglamento
+aprobado por D.S. N.° 009-2025-EF, incluyendo sus modificaciones. No presentes asesoría legal como
+conclusión definitiva. Distingue explícitamente entre DATO OFICIAL, INFERENCIA y DATO FALTANTE.
+No inventes requisitos, fechas, competidores ni probabilidades. Si faltan bases o TDR, indícalo.
+Para un análisis completo entrega: PUNTAJE DE OPORTUNIDAD (0-100), decisión GO/NO-GO/REVISAR,
+evidencias, riesgos, fechas críticas disponibles y la siguiente acción comercial concreta.
+"""
+
 def _leer_hoja(nombre_hoja):
     """Lee una hoja de Google Sheets y retorna lista de dicts."""
     try:
@@ -831,7 +1003,8 @@ COLUMNAS_LICITACION_TODAS = COLUMNAS_LICITACION_OBLIGATORIAS + ['monto_base', 'g
                                                                    'fin_contrato', 'duracion_dias', 'moneda', 'cui',
                                                                    'tdr_disponible', 'ruc_ganador', 'descripcion',
                                                                    'direccion_entidad', 'tipo_contratacion', 'telefono_entidad',
-                                                                   'codigo_tipo_procedimiento']
+                                                                   'codigo_tipo_procedimiento', 'ocid', 'fecha_cierre',
+                                                                   'fuente', 'fuente_url', 'subcategoria_ti', 'score_ti']
 
 # Estados posibles. Los primeros 2 implican ganador conocido; el resto, sin ganador aún o sin ganador posible.
 ESTADOS_LICITACION = [
@@ -1411,12 +1584,14 @@ with st.sidebar:
     if "Menores" in tipo_proceso:
         df = df_menores
         modulos_disponibles = [
+            "🔎 Procesos OECE",
             "📊 Dashboard",
             "🗄️ Base de Datos",
             "👥 CRM y Seguimiento",
             "📅 Calendario de Renovaciones",
             "🎯 Oportunidades",
             "💼 Análisis de Competencia",
+            "🤖 Inteligencia Artificial",
             "📝 Generador de Documentos",
             "💼 Generador de Propuestas",
             "📊 Exportar Datos",
@@ -1425,6 +1600,7 @@ with st.sidebar:
     else:
         df = df_licitaciones
         modulos_disponibles = [
+            "🔎 Procesos OECE",
             "📊 Dashboard de Licitaciones",
             "🗄️ Base de Datos de Licitaciones",
             "👥 CRM y Seguimiento",
@@ -1469,8 +1645,89 @@ with st.sidebar:
             st.markdown(f'<div class="sb-mini-kpi"><div class="sb-mini-val" style="color:#993C1D">{activos_sb}</div><div class="sb-mini-lbl">Activos</div></div>', unsafe_allow_html=True)
 
 
+# ==================== PROCESOS OFICIALES OECE ====================
+if seccion == "🔎 Procesos OECE":
+    st.markdown("""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Procesos OECE</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Consulta oportunidades TI oficiales publicadas en formato OCDS</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    filas_oece = []
+    if not df_menores.empty and 'fuente' in df_menores.columns:
+        for _, row in df_menores[df_menores['fuente'].astype(str).str.contains('OECE', case=False, na=False)].iterrows():
+            filas_oece.append({
+                'Tipo': 'Menor <8 UIT', 'Proceso': row.get('id', ''),
+                'Descripción': row.get('descripcion', ''), 'Entidad': row.get('entidad', ''),
+                'Categoría TI': row.get('subcategoria', ''), 'Estado': row.get('estado', ''),
+                'Monto': row.get('montoReferencial', 0), 'Publicación': row.get('publicado', ''),
+                'Cierre de ofertas': row.get('finCotz', ''),
+                'Adjudicación': row.get('fechaAdjudicacionEstimada', ''),
+                'Inicio contrato': row.get('inicioContrato', ''),
+                'Fin contrato': row.get('finContrato', ''),
+                'OCID': row.get('ocid', ''),
+                'Fuente oficial': row.get('fuente_url', ''),
+            })
+    if not df_licitaciones.empty and 'fuente' in df_licitaciones.columns:
+        for _, row in df_licitaciones[df_licitaciones['fuente'].astype(str).str.contains('OECE', case=False, na=False)].iterrows():
+            filas_oece.append({
+                'Tipo': 'Licitación ≥8 UIT', 'Proceso': row.get('id', ''),
+                'Descripción': row.get('titulo', '') or row.get('descripcion', ''),
+                'Entidad': row.get('entidad', ''), 'Categoría TI': row.get('subcategoria_ti', ''),
+                'Estado': row.get('estado', ''), 'Monto': row.get('monto_base', 0),
+                'Publicación': row.get('publicado', ''), 'Cierre de ofertas': row.get('fecha_cierre', ''),
+                'Adjudicación': row.get('adjudicacion', ''),
+                'Inicio contrato': row.get('inicio_contrato', ''),
+                'Fin contrato': row.get('fin_contrato', ''),
+                'OCID': row.get('ocid', ''), 'Fuente oficial': row.get('fuente_url', ''),
+            })
+
+    df_oece = pd.DataFrame(filas_oece)
+    if df_oece.empty:
+        st.info("Todavía no hay procesos identificados como OECE. Ejecuta una sincronización o actualiza la página.")
+    else:
+        df_oece['Monto'] = pd.to_numeric(df_oece['Monto'], errors='coerce').fillna(0)
+        col_k1, col_k2, col_k3 = st.columns(3)
+        col_k1.metric("Procesos OECE", len(df_oece))
+        col_k2.metric("Menores", int((df_oece['Tipo'] == 'Menor <8 UIT').sum()))
+        col_k3.metric("Licitaciones", int((df_oece['Tipo'] == 'Licitación ≥8 UIT').sum()))
+
+        col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+        with col_f1:
+            busqueda_oece = st.text_input("Buscar", placeholder="Entidad, descripción, proceso u OCID", key="buscar_oece")
+        with col_f2:
+            tipos_oece = st.multiselect("Tipo", sorted(df_oece['Tipo'].unique()), default=sorted(df_oece['Tipo'].unique()))
+        with col_f3:
+            categorias_oece = st.multiselect("Categoría TI", sorted(x for x in df_oece['Categoría TI'].dropna().unique() if x))
+
+        vista_oece = df_oece[df_oece['Tipo'].isin(tipos_oece)]
+        if categorias_oece:
+            vista_oece = vista_oece[vista_oece['Categoría TI'].isin(categorias_oece)]
+        if busqueda_oece:
+            patron = re.escape(busqueda_oece)
+            mascara = vista_oece[['Proceso', 'Descripción', 'Entidad', 'OCID']].astype(str).apply(
+                lambda col: col.str.contains(patron, case=False, na=False)
+            ).any(axis=1)
+            vista_oece = vista_oece[mascara]
+        vista_oece = vista_oece.sort_values(['Publicación', 'Monto'], ascending=[False, False])
+        st.caption(f"{len(vista_oece)} procesos mostrados")
+        st.dataframe(
+            vista_oece,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                'Monto': st.column_config.NumberColumn('Monto', format='S/ %.2f'),
+                'Fuente oficial': st.column_config.LinkColumn('OECE', display_text='Abrir'),
+            },
+        )
+
 # ==================== SECCIÓN 1: DASHBOARD ====================
-if "Menores" in tipo_proceso and seccion == "📊 Dashboard":
+elif "Menores" in tipo_proceso and seccion == "📊 Dashboard":
     st.markdown(f"""
     <div style="display:flex;align-items:center;justify-content:space-between;
                 margin-bottom:1rem;padding-bottom:0.75rem;
@@ -1979,6 +2236,29 @@ elif "Menores" in tipo_proceso and seccion == "📅 Calendario de Renovaciones":
             (renov_df['region'].isin(region_filter)) &
             (renov_df['confianza'].isin(confianza_filter))
         ]
+
+        with st.expander("📧 Enviar aviso de estas renovaciones"):
+            gmail_cfg = _get_gmail_config()
+            destino_aviso = st.text_input("Destinatario(s)", value=gmail_cfg['to'],
+                                           help="Puedes separar varios correos con comas.", key="destino_aviso_menores")
+            st.caption(f"Se enviará un resumen de {len(renov_filtered)} renovaciones visibles con sus fechas y días restantes.")
+            if st.button("Enviar aviso ahora", key="enviar_aviso_menores"):
+                if not all([destino_aviso, gmail_cfg['from'], gmail_cfg['pass']]):
+                    st.error("Gmail no está configurado. Agrega GMAIL_FROM, GMAIL_TO y GMAIL_APP_PASS en Secrets.")
+                elif renov_filtered.empty:
+                    st.warning("No hay renovaciones visibles para enviar.")
+                else:
+                    from seace_sync import enviar_alerta_eventos
+                    eventos_email = [{
+                        'tipo': 'Renovación de proceso menor', 'entidad': r['entidad'],
+                        'proceso': r['id'], 'fecha': r['proxima_renovacion'],
+                        'dias': int(r['dias_para_renovar']),
+                    } for _, r in renov_filtered.iterrows()]
+                    try:
+                        enviar_alerta_eventos(eventos_email, destino_aviso, gmail_cfg['from'], gmail_cfg['pass'])
+                        st.success(f"Aviso enviado a {destino_aviso}")
+                    except Exception as e:
+                        st.error(f"No se pudo enviar el aviso: {e}")
         
         # Mostrar por urgencia
         for urgencia in ['URGENTE', 'PRÓXIMA', 'NORMAL']:
@@ -2730,6 +3010,53 @@ if "Licitaciones" in tipo_proceso:
         
         
         nuevas_raw = cargar_licitaciones_raw()
+
+        st.markdown("#### Buscar oportunidades TI oficiales")
+        st.caption("Consulta la API OCDS de OECE, aplica el filtro comercial QUBITS y alimenta este Forecast sin duplicados.")
+        if st.session_state.get('oece_sync_mensaje'):
+            st.success(st.session_state.pop('oece_sync_mensaje'))
+        col_sync1, col_sync2, col_sync3 = st.columns([1, 1, 2])
+        with col_sync1:
+            dias_oece = st.number_input("Días hacia atrás", min_value=1, max_value=180, value=30, step=1)
+        with col_sync2:
+            paginas_oece = st.number_input("Profundidad", min_value=1, max_value=5, value=1, step=1,
+                                           help="Más profundidad encuentra más resultados, pero demora más.")
+        with col_sync3:
+            st.write("")
+            st.write("")
+            ejecutar_sync_oece = st.button("🔎 Buscar e incorporar desde OECE", type="primary", use_container_width=True)
+
+        if ejecutar_sync_oece:
+            try:
+                from seace_sync import descargar_oportunidades_oece
+                fecha_hasta_oece = datetime.now().date()
+                fecha_desde_oece = fecha_hasta_oece - timedelta(days=int(dias_oece))
+                with st.spinner("Consultando OECE y evaluando oportunidades TI..."):
+                    menores_encontradas, encontradas, estadisticas = descargar_oportunidades_oece(
+                        fecha_desde_oece, fecha_hasta_oece, max_paginas=int(paginas_oece)
+                    )
+                    actuales = cargar_licitaciones_raw()
+                    procesos_actuales = cargar_procesos_raw()
+                    nuevas_licitaciones = [lic for lic in encontradas if lic.get('id') not in actuales]
+                    nuevos_menores = [proc for proc in menores_encontradas if proc.get('id') not in procesos_actuales]
+                    for lic in nuevas_licitaciones:
+                        actuales[lic['id']] = lic
+                    for proc in nuevos_menores:
+                        procesos_actuales[proc['id']] = proc
+                    if nuevas_licitaciones:
+                        guardar_licitaciones_raw(actuales)
+                    if nuevos_menores:
+                        guardar_procesos_raw(procesos_actuales)
+                st.session_state['oece_sync_mensaje'] = (
+                    f"OECE consultado: {estadisticas['candidatos']} candidatos TI, "
+                    f"{len(nuevos_menores)} procesos menores y {len(nuevas_licitaciones)} licitaciones "
+                    f"nuevas incorporadas al Forecast."
+                )
+                st.rerun()
+            except Exception as e:
+                st.error(f"No se pudo completar la consulta a OECE: {e}")
+
+        st.divider()
         
         tab1, tab2, tab3, tab4 = st.tabs(["Pegar texto SEACE", "Formulario guiado", "Pegar JSON", "Todas las licitaciones"])
         
@@ -3293,6 +3620,29 @@ if "Licitaciones" in tipo_proceso:
             renovaciones_display['Vencimiento'] = renovaciones_display['Vencimiento'].dt.strftime('%Y-%m-%d')
             
             st.dataframe(renovaciones_display, use_container_width=True, hide_index=True)
+
+            with st.expander("📧 Enviar aviso de estos vencimientos"):
+                gmail_cfg = _get_gmail_config()
+                destino_aviso_lic = st.text_input("Destinatario(s)", value=gmail_cfg['to'],
+                                                   help="Puedes separar varios correos con comas.", key="destino_aviso_licitaciones")
+                st.caption(f"Se enviará un resumen de {len(renovaciones_filtradas)} contratos visibles.")
+                if st.button("Enviar aviso ahora", key="enviar_aviso_licitaciones"):
+                    if not all([destino_aviso_lic, gmail_cfg['from'], gmail_cfg['pass']]):
+                        st.error("Gmail no está configurado. Agrega GMAIL_FROM, GMAIL_TO y GMAIL_APP_PASS en Secrets.")
+                    elif renovaciones_filtradas.empty:
+                        st.warning("No hay vencimientos visibles para enviar.")
+                    else:
+                        from seace_sync import enviar_alerta_eventos
+                        eventos_email = [{
+                            'tipo': 'Fin de contrato', 'entidad': r['entidad'],
+                            'proceso': r['id'], 'fecha': r['fin_dt'].strftime('%Y-%m-%d'),
+                            'dias': int(r['dias_para_vencer']),
+                        } for _, r in renovaciones_filtradas.iterrows()]
+                        try:
+                            enviar_alerta_eventos(eventos_email, destino_aviso_lic, gmail_cfg['from'], gmail_cfg['pass'])
+                            st.success(f"Aviso enviado a {destino_aviso_lic}")
+                        except Exception as e:
+                            st.error(f"No se pudo enviar el aviso: {e}")
             
             # Expandir para ver detalles por entidad
             st.markdown("---")
@@ -4013,70 +4363,31 @@ Revisar y completar los campos marcados con [COMPLETAR] antes de presentar.
                 border-bottom:0.5px solid var(--color-border-tertiary)">
         <div>
             <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Inteligencia Artificial</div>
-            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Motor Claude · Análisis estratégico de licitaciones y mercado público peruano</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Copiloto KAM · Análisis estratégico con ChatGPT o Claude</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
-        st.caption("Motor de IA basado en Claude (Anthropic) para análisis estratégico de licitaciones públicas peruanas.")
-
-        # ── Configuración de API Key ──────────────────────────────────────────
-        with st.expander("⚙️ Configuración de API Key", expanded='api_key_lic' not in st.session_state):
-            api_key_input = st.text_input(
-                "Anthropic API Key:",
-                type="password",
-                value=st.session_state.get('api_key_lic', ''),
-                help="Obtén tu API Key en https://console.anthropic.com — se guarda solo en esta sesión, nunca en disco."
-            )
-            if st.button("💾 Guardar API Key", key="save_api_key_lic"):
-                if api_key_input.startswith("sk-ant-"):
-                    st.session_state['api_key_lic'] = api_key_input
-                    st.success("✅ API Key guardada para esta sesión.")
-                    st.rerun()
-                else:
-                    st.error("❌ La API Key debe comenzar con 'sk-ant-'")
-
-        if 'api_key_lic' not in st.session_state:
-            st.info("👆 Ingresa tu Anthropic API Key para activar el módulo de IA.")
+        st.caption("Analiza procesos, mercado y competidores. Los resultados se guardan para reutilizarlos en Forecast.")
+        MOTOR_IA = st.selectbox(
+            "Motor de inteligencia:",
+            ["ChatGPT (OpenAI)", "Claude (Anthropic)"],
+            key="motor_ia_licitaciones",
+        )
+        if not _get_ai_api_key(MOTOR_IA):
+            variable = 'OPENAI_API_KEY' if MOTOR_IA == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
+            st.warning(f"Configura `{variable}` en los secretos de la aplicación para activar este motor.")
             st.stop()
 
-        API_KEY = st.session_state['api_key_lic']
-
-        # ── Función de llamada a Claude ───────────────────────────────────────
-        def consultar_claude(sistema, usuario, max_tokens=2000):
-            import urllib.request
-            import urllib.error
-            payload = json.dumps({
-                "model": "claude-sonnet-4-6",
-                "max_tokens": max_tokens,
-                "system": sistema,
-                "messages": [{"role": "user", "content": usuario}]
-            }).encode('utf-8')
-            req = urllib.request.Request(
-                "https://api.anthropic.com/v1/messages",
-                data=payload,
-                headers={
-                    "x-api-key": API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
-                },
-                method="POST"
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=60) as resp:
-                    data = json.loads(resp.read().decode('utf-8'))
-                    return data['content'][0]['text'], None
-            except urllib.error.HTTPError as e:
-                body = e.read().decode('utf-8')
-                return None, f"Error HTTP {e.code}: {body}"
-            except Exception as e:
-                return None, str(e)
+        def consultar_claude(sistema, usuario, max_tokens=2400):
+            return consultar_ia(MOTOR_IA, sistema, usuario, max_tokens)
 
         SISTEMA_KAM = """Eres un experto en contrataciones públicas peruanas y estrategia comercial B2B para el sector TI. 
-Conoces en profundidad la Ley N.° 30225, el D.S. N.° 344-2018-EF, las directivas de OSCE, y el ecosistema 
-de licitaciones en Perú (SEACE). Trabajas para Qubits SAC, empresa de infraestructura tecnológica y 
+Conoces la contratación pública peruana y el ecosistema OECE/SEACE. Trabajas para Qubits SAC,
+empresa de infraestructura tecnológica y
 servicios en la nube. Eres el asesor estratégico de Alex Cerna, Key Account Manager Senior.
 Responde siempre en español formal peruano, con análisis concreto y accionable. 
-Usa datos exactos cuando los tengas. Sé directo y práctico."""
+Usa datos exactos cuando los tengas. Sé directo y práctico.
+""" + MARCO_IA_KAM
 
         if len(df) == 0:
             st.info("Agrega licitaciones primero para usar el análisis de IA.")
@@ -4162,16 +4473,17 @@ Considera el tipo de servicio, la entidad, la duración y el marco normativo OSC
                 }
 
                 if st.button("🚀 Analizar con IA", key="btn_analisis_lic", type="primary"):
-                    with st.spinner("🤖 Claude está analizando la licitación..."):
+                    with st.spinner(f"🤖 {MOTOR_IA} está analizando la licitación..."):
                         respuesta, error = consultar_claude(SISTEMA_KAM, prompts_analisis[tipo_analisis])
                     if error:
                         st.error(f"❌ Error: {error}")
                     else:
                         st.session_state[f'ia_resp_lic_{lic_sel}'] = respuesta
+                        guardar_analisis_ia(lic_sel, 'Licitación', tipo_analisis, MOTOR_IA, respuesta)
 
                 if f'ia_resp_lic_{lic_sel}' in st.session_state:
                     st.markdown("---")
-                    st.markdown("#### 📋 Análisis de Claude")
+                    st.markdown(f"#### 📋 Análisis de {MOTOR_IA}")
                     st.markdown(st.session_state[f'ia_resp_lic_{lic_sel}'])
                     st.download_button(
                         "📥 Descargar análisis",
@@ -4230,13 +4542,14 @@ DISTRIBUCIÓN REGIONAL:
                 }
 
                 if st.button("🚀 Analizar Mercado con IA", key="btn_intel_mercado", type="primary"):
-                    with st.spinner("🤖 Claude está analizando tu portafolio..."):
+                    with st.spinner(f"🤖 {MOTOR_IA} está analizando tu portafolio..."):
                         respuesta, error = consultar_claude(SISTEMA_KAM, prompts_intel[tipo_intel])
                     if error:
                         st.error(f"❌ Error: {error}")
                     else:
                         st.session_state['ia_resp_intel'] = respuesta
                         st.session_state['ia_resp_intel_tipo'] = tipo_intel
+                        guardar_analisis_ia('PORTAFOLIO-LIC', 'Licitación', tipo_intel, MOTOR_IA, respuesta)
 
                 if 'ia_resp_intel' in st.session_state:
                     st.markdown("---")
@@ -4294,7 +4607,7 @@ COMPETIDOR A ANALIZAR: {competidor_sel}
 - Tasa de éxito histórica SEACE: {comp_data['tasa_seace']:.1f}%
 
 EMPRESA QUE COMPITE: Qubits SAC (infraestructura TI y nube)
-MERCADO: Licitaciones públicas peruanas >8 UIT (Ley 30225)
+MERCADO: Licitaciones públicas peruanas >8 UIT (Ley N.° 32069 y normativa vigente)
 """
                     tipo_comp = st.selectbox("Tipo de análisis competitivo:", [
                         "Perfil completo del competidor y cómo superarlo",
@@ -4317,6 +4630,7 @@ MERCADO: Licitaciones públicas peruanas >8 UIT (Ley 30225)
                             st.error(f"❌ Error: {error}")
                         else:
                             st.session_state['ia_resp_comp'] = respuesta
+                            guardar_analisis_ia(competidor_sel, 'Competidor licitaciones', tipo_comp, MOTOR_IA, respuesta)
 
                     if 'ia_resp_comp' in st.session_state:
                         st.markdown("---")
@@ -4359,36 +4673,19 @@ MERCADO: Licitaciones públicas peruanas >8 UIT (Ley 30225)
 
                     with st.chat_message("assistant"):
                         with st.spinner("🤖 Pensando..."):
-                            import urllib.request, urllib.error
-                            payload = json.dumps({
-                                "model": "claude-sonnet-4-6",
-                                "max_tokens": 2000,
-                                "system": SISTEMA_KAM,
-                                "messages": mensajes_api
-                            }).encode('utf-8')
-                            req = urllib.request.Request(
-                                "https://api.anthropic.com/v1/messages",
-                                data=payload,
-                                headers={
-                                    "x-api-key": API_KEY,
-                                    "anthropic-version": "2023-06-01",
-                                    "content-type": "application/json"
-                                },
-                                method="POST"
-                            )
-                            try:
-                                with urllib.request.urlopen(req, timeout=60) as resp:
-                                    data_resp = json.loads(resp.read().decode('utf-8'))
-                                    respuesta_chat = data_resp['content'][0]['text']
-                                    st.markdown(respuesta_chat)
-                                    st.session_state['ia_historial'].append({'rol': 'assistant', 'texto': respuesta_chat})
-                            except Exception as e:
-                                st.error(f"❌ Error: {str(e)}")
+                            respuesta_chat, error = consultar_ia(MOTOR_IA, SISTEMA_KAM, mensajes_api)
+                            if error:
+                                st.error(f"❌ Error: {error}")
+                            else:
+                                st.markdown(respuesta_chat)
+                                st.session_state['ia_historial'].append({'rol': 'assistant', 'texto': respuesta_chat})
 
                 if st.session_state.get('ia_historial'):
                     if st.button("🗑️ Limpiar conversación", key="limpiar_chat_ia"):
                         st.session_state['ia_historial'] = []
                         st.rerun()
+
+        mostrar_historial_ia('Licitación')
 
     elif seccion == "📊 Exportar Licitaciones":
         st.markdown(f"""
@@ -4476,6 +4773,274 @@ MERCADO: Licitaciones públicas peruanas >8 UIT (Ley 30225)
 
 # ==================== SECCIÓN 8: CONFIGURACIÓN ====================
 
+elif "Menores" in tipo_proceso and seccion == "🤖 Inteligencia Artificial":
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                margin-bottom:1rem;padding-bottom:0.75rem;
+                border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div>
+            <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Inteligencia Artificial</div>
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Copiloto KAM · Análisis con ChatGPT o Claude</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    MOTOR_IA_M = st.selectbox(
+        "Motor de inteligencia:",
+        ["ChatGPT (OpenAI)", "Claude (Anthropic)"],
+        key="motor_ia_menores",
+    )
+    if not _get_ai_api_key(MOTOR_IA_M):
+        variable = 'OPENAI_API_KEY' if MOTOR_IA_M == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
+        st.warning(f"Configura `{variable}` en los secretos de la aplicación para activar este motor.")
+        st.stop()
+
+    def consultar_claude_m(sistema, usuario, max_tokens=2400):
+        return consultar_ia(MOTOR_IA_M, sistema, usuario, max_tokens)
+
+    SISTEMA_KAM_M = """Eres un experto en contrataciones públicas peruanas y estrategia comercial B2B para el sector TI.
+Trabajas para Qubits SAC, empresa peruana de infraestructura tecnológica y servicios en la nube.
+Eres el asesor estratégico de Alex Cerna, Key Account Manager Senior.
+El portafolio que analizas son procesos menores a 8 UIT (≤8 UIT) del sector público peruano.
+Responde en español formal peruano, con análisis concreto y accionable.
+""" + MARCO_IA_KAM
+
+    if len(df) == 0:
+        st.info("Agrega procesos primero para usar el análisis de IA.")
+    else:
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🎯 Análisis de Proceso",
+            "📊 Inteligencia de Mercado",
+            "🏆 Estrategia Competitiva",
+            "💬 Consulta Libre"
+        ])
+
+        # ── TAB 1: Análisis individual ──────────────────────────────────
+        with tab1:
+            st.markdown("#### 🎯 Análisis Estratégico de Proceso")
+            st.caption("IA analiza un proceso específico y te dice si debes postular, cómo ganarlo y qué riesgos enfrentas.")
+
+            proc_sel = st.selectbox("Selecciona el proceso:", df['id'].unique(), key="ia_m_proc_sel")
+            row_sel = df[df['id'] == proc_sel].iloc[0]
+
+            contexto_proc = f"""
+PROCESO A ANALIZAR (Menor ≤8 UIT):
+- ID: {proc_sel}
+- Entidad: {row_sel.get('entidad', '')}
+- Servicio: {row_sel.get('descripcion', row_sel.get('subcategoria', ''))}
+- Subcategoría: {row_sel.get('subcategoria', '')}
+- Estado: {row_sel.get('estado', '')}
+- Resultado: {row_sel.get('resultadoAdjudicacion', '')}
+- Monto Base: S/ {row_sel.get('montoBase', 0):,.2f}
+- Monto Adjudicado: S/ {row_sel.get('montoAdjudicado', 0):,.2f}
+- Región: {row_sel.get('region', '')}
+- Proveedor adjudicado: {row_sel.get('proveedor', '')}
+EMPRESA: Qubits SAC (infraestructura TI y nube, sector público peruano)
+"""
+
+            tipo_anal = st.selectbox("Tipo de análisis:", [
+                "Análisis completo (Go/No-Go + estrategia + riesgos)",
+                "Probabilidad de ganar y factores clave",
+                "Estrategia de precio y posicionamiento",
+                "Riesgos contractuales y técnicos",
+                "Próximos pasos accionables",
+            ], key="ia_m_tipo_anal")
+
+            prompts_m = {
+                "Análisis completo (Go/No-Go + estrategia + riesgos)": f"Analiza este proceso para Qubits SAC: 1) Decisión GO/NO-GO con 3 razones, 2) Probabilidad de ganar (%), 3) Estrategia recomendada, 4) Top 3 riesgos, 5) Próximos pasos.\n{contexto_proc}",
+                "Probabilidad de ganar y factores clave": f"Calcula la probabilidad de que Qubits SAC gane este proceso. Da un porcentaje justificado y los 3 factores más influyentes.\n{contexto_proc}",
+                "Estrategia de precio y posicionamiento": f"¿Cuál debe ser la estrategia de precio y posicionamiento de Qubits para ganar este proceso menor?\n{contexto_proc}",
+                "Riesgos contractuales y técnicos": f"Identifica los principales riesgos técnicos y contractuales de este proceso para Qubits SAC.\n{contexto_proc}",
+                "Próximos pasos accionables": f"Dame un plan de acción inmediato para este proceso. ¿Qué debe hacer Qubits esta semana?\n{contexto_proc}",
+            }
+
+            if st.button("🚀 Analizar con IA", key="btn_ia_m_anal", type="primary"):
+                with st.spinner(f"🤖 {MOTOR_IA_M} está analizando..."):
+                    respuesta, error = consultar_claude_m(SISTEMA_KAM_M, prompts_m[tipo_anal])
+                if error:
+                    st.error(f"❌ Error: {error}")
+                else:
+                    st.session_state[f'ia_m_resp_{proc_sel}'] = respuesta
+                    guardar_analisis_ia(proc_sel, 'Menor a 8 UIT', tipo_anal, MOTOR_IA_M, respuesta)
+
+            if f'ia_m_resp_{proc_sel}' in st.session_state:
+                st.markdown("---")
+                st.markdown(f"#### 📋 Análisis de {MOTOR_IA_M}")
+                st.markdown(st.session_state[f'ia_m_resp_{proc_sel}'])
+                st.download_button(
+                    "📥 Descargar análisis",
+                    data=st.session_state[f'ia_m_resp_{proc_sel}'].encode('utf-8'),
+                    file_name=f"Analisis_IA_{proc_sel}_{datetime.now().strftime('%Y%m%d')}.txt",
+                    mime="text/plain", key=f"dl_ia_m_{proc_sel}"
+                )
+
+        # ── TAB 2: Inteligencia de mercado ──────────────────────────────
+        with tab2:
+            st.markdown("#### 📊 Inteligencia de Mercado — Menores ≤8 UIT")
+            st.caption("IA analiza todo tu portafolio de procesos menores e identifica patrones, tendencias y oportunidades.")
+
+            total_m = len(df)
+            adj_m = len(df[df['resultadoAdjudicacion'] == 'Adjudicado']) if total_m > 0 else 0
+            tasa_m = adj_m / total_m * 100 if total_m > 0 else 0
+            mercado_m = df['montoAdjudicado'].sum()
+            top_clientes = df.groupby('entidad')['id'].count().sort_values(ascending=False).head(5)
+            top_servicios = df['subcategoria'].value_counts().head(5) if 'subcategoria' in df.columns else {}
+            regiones_m = df['region'].value_counts().head(5)
+
+            resumen_m = f"""
+PORTAFOLIO MENORES ≤8 UIT — QUBITS SAC:
+- Total procesos: {total_m}
+- Adjudicados: {adj_m} ({tasa_m:.1f}% tasa de éxito)
+- Mercado total adjudicado: S/ {mercado_m:,.0f}
+- Clientes únicos: {df['entidad'].nunique()}
+
+TOP 5 CLIENTES (por frecuencia):
+{chr(10).join([f'  - {e}: {n} procesos' for e, n in top_clientes.items()])}
+
+TOP SERVICIOS:
+{chr(10).join([f'  - {s}: {n}' for s, n in (top_servicios.items() if hasattr(top_servicios, 'items') else [])])}
+
+DISTRIBUCIÓN REGIONAL:
+{chr(10).join([f'  - {r}: {n}' for r, n in regiones_m.items()])}
+"""
+
+            tipo_intel_m = st.selectbox("¿Qué quieres analizar?", [
+                "Oportunidades de mayor potencial en mi base",
+                "Patrones de éxito — qué factores explican mis adjudicaciones",
+                "Clientes con mayor potencial de cuenta recurrente",
+                "Cómo aumentar mi tasa de éxito actual",
+                "Tendencias del mercado TI público peruano ≤8 UIT",
+            ], key="ia_m_tipo_intel")
+
+            prompts_intel_m = {
+                "Oportunidades de mayor potencial en mi base": f"Analiza este portafolio e identifica las 3-5 oportunidades de mayor potencial para Qubits SAC. Justifica con datos.\n{resumen_m}",
+                "Patrones de éxito — qué factores explican mis adjudicaciones": f"¿Qué patrones ves en este portafolio? ¿Qué factores explican el {tasa_m:.1f}% de tasa de éxito? ¿Qué debe replicar Qubits?\n{resumen_m}",
+                "Clientes con mayor potencial de cuenta recurrente": f"¿Qué clientes tienen mayor potencial para convertirse en cuentas recurrentes de largo plazo? ¿Por qué?\n{resumen_m}",
+                "Cómo aumentar mi tasa de éxito actual": f"La tasa de éxito actual es {tasa_m:.1f}%. ¿Cómo podría Qubits SAC mejorarla? Dame recomendaciones concretas.\n{resumen_m}",
+                "Tendencias del mercado TI público peruano ≤8 UIT": f"Basándote en este portafolio y tu conocimiento del mercado público peruano de TI, ¿qué tendencias ves en procesos ≤8 UIT?\n{resumen_m}",
+            }
+
+            if st.button("🚀 Analizar Mercado con IA", key="btn_ia_m_intel", type="primary"):
+                with st.spinner("🤖 Claude está analizando tu portafolio..."):
+                    respuesta, error = consultar_claude_m(SISTEMA_KAM_M, prompts_intel_m[tipo_intel_m])
+                if error:
+                    st.error(f"❌ Error: {error}")
+                else:
+                    st.session_state['ia_m_resp_intel'] = respuesta
+                    st.session_state['ia_m_resp_intel_tipo'] = tipo_intel_m
+                    guardar_analisis_ia('PORTAFOLIO-MENOR', 'Menor a 8 UIT', tipo_intel_m, MOTOR_IA_M, respuesta)
+
+            if 'ia_m_resp_intel' in st.session_state:
+                st.markdown("---")
+                st.markdown(f"#### 📋 {st.session_state.get('ia_m_resp_intel_tipo', 'Análisis')}")
+                st.markdown(st.session_state['ia_m_resp_intel'])
+                st.download_button(
+                    "📥 Descargar análisis",
+                    data=st.session_state['ia_m_resp_intel'].encode('utf-8'),
+                    file_name=f"Intel_Mercado_Menores_{datetime.now().strftime('%Y%m%d')}.txt",
+                    mime="text/plain", key="dl_ia_m_intel"
+                )
+
+        # ── TAB 3: Estrategia Competitiva ───────────────────────────────
+        with tab3:
+            st.markdown("#### 🏆 Estrategia Competitiva — Menores ≤8 UIT")
+            st.caption("IA analiza los proveedores que te ganan procesos y te ayuda a superarlos.")
+
+            if 'proveedor' not in df.columns or df['proveedor'].dropna().empty:
+                st.info("No hay datos de proveedores adjudicados registrados. Asegúrate de que el campo 'proveedor' esté completo en tus procesos.")
+            else:
+                ranking_prov = df[df['proveedor'].notna() & (df['proveedor'] != '')].groupby('proveedor').agg(
+                    procesos=('id', 'count'),
+                    monto_total=('montoAdjudicado', 'sum')
+                ).sort_values('procesos', ascending=False).head(10)
+
+                if len(ranking_prov) > 0:
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown(f'<div class="kc p"><div class="kc-val">{len(ranking_prov)}</div><div class="kc-lbl">Competidores</div></div>', unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f'<div class="kc t"><div class="kc-val">{ranking_prov["procesos"].max()}</div><div class="kc-lbl">Máx. procesos rival</div></div>', unsafe_allow_html=True)
+                    with col3:
+                        st.markdown(f'<div class="kc c"><div class="kc-val">S/ {ranking_prov["monto_total"].max()/1e3:.0f}K</div><div class="kc-lbl">Mayor adjudicación rival</div></div>', unsafe_allow_html=True)
+
+                    st.markdown("---")
+                    st.dataframe(ranking_prov, use_container_width=True)
+
+                    competidor = st.selectbox("Analizar competidor:", ranking_prov.index.tolist(), key="ia_m_comp_sel")
+                    comp_data = ranking_prov.loc[competidor]
+
+                    contexto_comp_m = f"""
+COMPETIDOR: {competidor}
+- Procesos adjudicados en base de Qubits: {int(comp_data['procesos'])}
+- Monto total adjudicado: S/ {comp_data['monto_total']:,.0f}
+MERCADO: Procesos menores ≤8 UIT, sector público peruano
+EMPRESA QUE COMPITE: Qubits SAC
+"""
+                    tipo_comp_m = st.selectbox("Tipo de análisis:", [
+                        "Perfil del competidor y cómo superarlo",
+                        "En qué procesos Qubits tiene ventaja sobre este proveedor",
+                        "Estrategia de precio para ganarle",
+                    ], key="ia_m_tipo_comp")
+
+                    prompts_comp_m = {
+                        "Perfil del competidor y cómo superarlo": f"Analiza a {competidor} como competidor de Qubits en procesos menores ≤8 UIT. Da un perfil y estrategia para superarlo.\n{contexto_comp_m}",
+                        "En qué procesos Qubits tiene ventaja sobre este proveedor": f"¿En qué tipos de procesos ≤8 UIT tiene Qubits SAC ventaja competitiva sobre {competidor}?\n{contexto_comp_m}",
+                        "Estrategia de precio para ganarle": f"¿Qué estrategia de precio debe usar Qubits para ganarle a {competidor} en procesos ≤8 UIT?\n{contexto_comp_m}",
+                    }
+
+                    if st.button("🚀 Analizar con IA", key="btn_ia_m_comp", type="primary"):
+                        with st.spinner(f"🤖 Analizando a {competidor}..."):
+                            respuesta, error = consultar_claude_m(SISTEMA_KAM_M, prompts_comp_m[tipo_comp_m])
+                        if error:
+                            st.error(f"❌ Error: {error}")
+                        else:
+                            st.session_state['ia_m_resp_comp'] = respuesta
+                            guardar_analisis_ia(competidor, 'Competidor menores', tipo_comp_m, MOTOR_IA_M, respuesta)
+
+                    if 'ia_m_resp_comp' in st.session_state:
+                        st.markdown("---")
+                        st.markdown(st.session_state['ia_m_resp_comp'])
+
+        # ── TAB 4: Chat Libre ───────────────────────────────────────────
+        with tab4:
+            st.markdown("#### 💬 Consulta Libre al Asesor IA")
+            st.caption("Hazle cualquier pregunta sobre tu portafolio de procesos menores, estrategia o mercado público peruano.")
+
+            if 'ia_m_historial' not in st.session_state:
+                st.session_state['ia_m_historial'] = []
+
+            for msg in st.session_state['ia_m_historial']:
+                with st.chat_message(msg['rol']):
+                    st.markdown(msg['texto'])
+
+            pregunta_m = st.chat_input("Escribe tu consulta...", key="ia_m_chat")
+
+            if pregunta_m:
+                st.session_state['ia_m_historial'].append({'rol': 'user', 'texto': pregunta_m})
+                with st.chat_message("user"):
+                    st.markdown(pregunta_m)
+
+                mensajes_api = [
+                    {"role": "user" if m['rol'] == 'user' else "assistant", "content": m['texto']}
+                    for m in st.session_state['ia_m_historial']
+                ]
+
+                with st.chat_message("assistant"):
+                    with st.spinner("🤖 Pensando..."):
+                        resp_chat, error = consultar_ia(MOTOR_IA_M, SISTEMA_KAM_M, mensajes_api)
+                        if error:
+                            st.error(f"❌ Error: {error}")
+                        else:
+                            st.markdown(resp_chat)
+                            st.session_state['ia_m_historial'].append({'rol': 'assistant', 'texto': resp_chat})
+
+            if st.session_state.get('ia_m_historial'):
+                if st.button("🗑️ Limpiar conversación", key="limpiar_chat_ia_m"):
+                    st.session_state['ia_m_historial'] = []
+                    st.rerun()
+
+    mostrar_historial_ia('Menor')
+
 elif seccion == "⚙️ Configuración" and "Menores" in tipo_proceso:
     st.markdown(f"""
     <div style="display:flex;align-items:center;justify-content:space-between;
@@ -4546,4 +5111,3 @@ st.markdown("""
         </span>
     </div>
 """, unsafe_allow_html=True)
-
