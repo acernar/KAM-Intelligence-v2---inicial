@@ -1,0 +1,68 @@
+name: SEACE Sync Diario — KAM Intelligence
+
+on:
+  # Corre cada día a 12:00 UTC = 7:00am Lima (UTC-5)
+  schedule:
+    - cron: '0 12 * * *'
+
+  # Permite ejecutarlo manualmente desde GitHub
+  workflow_dispatch:
+    inputs:
+      fecha:
+        description: 'Fecha específica (YYYY-MM-DD). Vacío = ayer.'
+        required: false
+        default: ''
+      dias:
+        description: 'Días hacia atrás a consultar (default: 1)'
+        required: false
+        default: '1'
+      dry_run:
+        description: 'Dry run (no guarda ni envía email)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+jobs:
+  sync:
+    name: Sincronizar licitaciones TI desde SEACE
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          pip install requests gspread google-auth
+
+      - name: Ejecutar sync SEACE
+        env:
+          GSHEETS_CREDENTIALS_JSON: ${{ secrets.GSHEETS_CREDENTIALS_JSON }}
+          GMAIL_FROM:               ${{ secrets.GMAIL_FROM }}
+          GMAIL_TO:                 ${{ secrets.GMAIL_TO }}
+          GMAIL_APP_PASS:           ${{ secrets.GMAIL_APP_PASS }}
+        run: |
+          ARGS=""
+          if [ "${{ github.event.inputs.fecha }}" != "" ]; then
+            ARGS="$ARGS --fecha ${{ github.event.inputs.fecha }}"
+          fi
+          if [ "${{ github.event.inputs.dias }}" != "" ]; then
+            ARGS="$ARGS --dias ${{ github.event.inputs.dias }}"
+          fi
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          python3 seace_sync.py $ARGS
+
+      - name: Notificar resultado
+        if: always()
+        run: |
+          echo "Sync completado: ${{ job.status }}"
