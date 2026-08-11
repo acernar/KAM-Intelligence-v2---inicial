@@ -436,7 +436,8 @@ def convertir_record(record: dict) -> dict | None:
         "ocid": record.get("ocid") or release.get("ocid") or "",
         "fecha_cierre": _fecha_corta(period.get("endDate")),
         "fuente": "OECE-OCDS-OFICIAL",
-        "fuente_url": f"{API_BASE}/record/{record.get('ocid') or release.get('ocid') or ''}",
+        "fuente_url": f"https://contratacionesabiertas.oece.gob.pe/proceso/{record.get('ocid') or release.get('ocid') or ''}",
+        "api_url": f"{API_BASE}/record/{record.get('ocid') or release.get('ocid') or ''}",
         "subcategoria_ti": subcategoria,
         "score_ti": score,
         "coincidencias_ti": coincidencias,
@@ -855,6 +856,8 @@ def main():
     parser.add_argument("--fecha", type=str, default=None)
     parser.add_argument("--dias", type=int, default=7)
     parser.add_argument("--max-paginas", type=int, default=2)
+    parser.add_argument("--sin-alertas-calendario", action="store_true",
+                        help="No envía el resumen de calendario; útil para sincronizaciones frecuentes")
     args = parser.parse_args()
     hasta = datetime.strptime(args.fecha, "%Y-%m-%d").date() if args.fecha else date.today()
     desde = hasta - timedelta(days=args.dias)
@@ -896,7 +899,7 @@ def main():
     for lic in nuevas[:10]:
         log.info("%s | %s | %s | score %s", lic["id"], lic["entidad"], lic["subcategoria_ti"], lic["score_ti"])
     enviar_email(nuevas, menores_nuevos, dry_run=args.dry_run)
-    if not args.local:
+    if not args.local and not args.sin_alertas_calendario:
         eventos = obtener_eventos_calendario_sheets(sh)
         log.info("Alertas de calendario detectadas: %d", len(eventos))
         enviar_alerta_eventos(eventos, dry_run=args.dry_run)

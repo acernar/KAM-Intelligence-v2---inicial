@@ -27,6 +27,14 @@ from zoneinfo import ZoneInfo
 
 GSHEETS_SPREADSHEET_ID = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
 
+
+def _url_ficha_oece(ocid, fallback=""):
+    """Devuelve la ficha pública legible; evita exponer el JSON técnico de la API."""
+    ocid = str(ocid or '').strip()
+    if ocid:
+        return f"https://contratacionesabiertas.oece.gob.pe/proceso/{ocid}"
+    return str(fallback or '')
+
 @st.cache_resource(ttl=300)
 def _get_gsheets_client():
     """Inicializa y retorna el cliente de Google Sheets. Retorna None si no hay credenciales."""
@@ -1788,7 +1796,7 @@ if seccion == "🔎 Procesos OECE":
                 'Inicio contrato': row.get('inicioContrato', ''),
                 'Fin contrato': row.get('finContrato', ''),
                 'OCID': row.get('ocid', ''),
-                'Fuente oficial': row.get('fuente_url', ''),
+                'Fuente oficial': _url_ficha_oece(row.get('ocid', ''), row.get('fuente_url', '')),
             })
     if not df_licitaciones.empty and 'fuente' in df_licitaciones.columns:
         for _, row in df_licitaciones[df_licitaciones['fuente'].astype(str).str.contains('OECE', case=False, na=False)].iterrows():
@@ -1803,7 +1811,8 @@ if seccion == "🔎 Procesos OECE":
                 'Adjudicación': row.get('adjudicacion', ''),
                 'Inicio contrato': row.get('inicio_contrato', ''),
                 'Fin contrato': row.get('fin_contrato', ''),
-                'OCID': row.get('ocid', ''), 'Fuente oficial': row.get('fuente_url', ''),
+                'OCID': row.get('ocid', ''),
+                'Fuente oficial': _url_ficha_oece(row.get('ocid', ''), row.get('fuente_url', '')),
             })
 
     df_oece = pd.DataFrame(filas_oece)
@@ -1873,7 +1882,8 @@ elif seccion == "🆕 Últimos 7 días":
                 'Estado': row.get('estado', ''), 'Cierre': row.get('finCotz', ''),
                 'Monto referencial': row.get('montoReferencial', 0),
                 'Monto adjudicado': row.get('montoAdjudicado', 0),
-                'Ganador': row.get('proveedor', ''), 'Fuente oficial': row.get('fuente_url', ''),
+                'Ganador': row.get('proveedor', ''),
+                'Fuente oficial': _url_ficha_oece(row.get('ocid', ''), row.get('fuente_url', '')),
                 'Nube detectada': row.get('proveedor_nube_detectado', '') or politica_nube['proveedor_nube_detectado'],
                 'Decisión': row.get('decision_comercial', '') or politica_nube['decision_comercial'],
                 'Motivo': row.get('motivo_decision', '') or politica_nube['motivo_decision'],
@@ -1892,7 +1902,8 @@ elif seccion == "🆕 Últimos 7 días":
                 'Estado': row.get('estado', ''), 'Cierre': row.get('fecha_cierre', ''),
                 'Monto referencial': row.get('monto_base', 0),
                 'Monto adjudicado': row.get('monto_adjudicado', 0),
-                'Ganador': row.get('ganador', ''), 'Fuente oficial': row.get('fuente_url', ''),
+                'Ganador': row.get('ganador', ''),
+                'Fuente oficial': _url_ficha_oece(row.get('ocid', ''), row.get('fuente_url', '')),
                 'Nube detectada': row.get('proveedor_nube_detectado', '') or politica_nube['proveedor_nube_detectado'],
                 'Decisión': row.get('decision_comercial', '') or politica_nube['decision_comercial'],
                 'Motivo': row.get('motivo_decision', '') or politica_nube['motivo_decision'],
