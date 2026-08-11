@@ -10,7 +10,9 @@ import logging
 import os
 import re
 import smtplib
+import time
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -119,15 +121,48 @@ def evaluar_relevancia(titulo: str, descripcion: str = "") -> tuple[int, str, li
     return puntos, categoria, coincidencias_por_categoria[categoria]
 
 
-def _get_json(url: str, params=None) -> dict:
+OECE_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json,text/plain,*/*",
+    "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
+    "Referer": "https://contratacionesabiertas.oece.gob.pe/",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+}
+
+
+def _get_json(url: str, params=None, max_intentos: int = 4) -> dict:
+    """Consulta OECE con reintentos para bloqueos y errores temporales."""
     if params:
         url = f"{url}?{urllib.parse.urlencode(params)}"
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": "QUBITS-KAM-Intelligence/3.0", "Accept": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=90) as response:
-        return json.load(response)
+    ultimo_error = None
+    for intento in range(1, max_intentos + 1):
+        request = urllib.request.Request(url, headers=OECE_HEADERS)
+        try:
+            with urllib.request.urlopen(request, timeout=90) as response:
+                return json.load(response)
+        except urllib.error.HTTPError as exc:
+            ultimo_error = exc
+            reintentable = exc.code in (403, 408, 425, 429, 500, 502, 503, 504)
+            if not reintentable or intento == max_intentos:
+                raise RuntimeError(
+                    f"OECE rechazó la consulta después de {intento} intentos "
+                    f"(HTTP {exc.code}). URL: {url.split('?')[0]}"
+                ) from exc
+            espera = min(20, 2 ** intento)
+            log.warning("OECE HTTP %s; reintento %d/%d en %ss", exc.code, intento, max_intentos, espera)
+            time.sleep(espera)
+        except (urllib.error.URLError, TimeoutError) as exc:
+            ultimo_error = exc
+            if intento == max_intentos:
+                raise RuntimeError(f"OECE no respondió después de {intento} intentos") from exc
+            espera = min(20, 2 ** intento)
+            log.warning("OECE no respondió; reintento %d/%d en %ss", intento, max_intentos, espera)
+            time.sleep(espera)
+    raise RuntimeError("No se pudo consultar OECE") from ultimo_error
 
 
 def _fecha_corta(valor) -> str:

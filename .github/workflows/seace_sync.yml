@@ -1,6 +1,13 @@
 name: SEACE Sync Diario — KAM Intelligence
 
 on:
+  # Ejecuta una prueba automática cuando cambia el sincronizador.
+  push:
+    branches: [main]
+    paths:
+      - 'seace_sync.py'
+      - '.github/workflows/seace_sync.yml'
+
   # Corre cada día a las 7:00am y 12:00pm de Lima (UTC-5)
   schedule:
     - cron: '0 12 * * *'
@@ -28,7 +35,7 @@ jobs:
   sync:
     name: Sincronizar licitaciones TI desde SEACE
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout código
