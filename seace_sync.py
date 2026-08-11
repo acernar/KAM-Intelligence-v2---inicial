@@ -27,6 +27,23 @@ HOJA_LICITACIONES = "licitaciones"
 HOJA_SYNC_LOG = "sync_log"
 UIT_POR_ANIO = {2025: 5350, 2026: 5500}
 
+
+def _cargar_env_local(ruta=".env"):
+    """Carga secretos locales ignorados por Git, sin reemplazar variables ya definidas."""
+    if not os.path.exists(ruta):
+        return
+    with open(ruta, encoding="utf-8") as archivo:
+        for linea in archivo:
+            linea = linea.strip()
+            if not linea or linea.startswith("#") or "=" not in linea:
+                continue
+            clave, valor = linea.split("=", 1)
+            clave, valor = clave.strip(), valor.strip().strip('"').strip("'")
+            if clave and valor:
+                os.environ.setdefault(clave, valor)
+
+
+_cargar_env_local()
 GMAIL_FROM = os.environ.get("GMAIL_FROM", "")
 GMAIL_TO = os.environ.get("GMAIL_TO", "acernar@gmail.com,alexander.cerna@qubitssales.com")
 GMAIL_APP_PASS = os.environ.get("GMAIL_APP_PASS", "")
@@ -555,6 +572,9 @@ def descargar_licitaciones_oece(fecha_desde: date, fecha_hasta: date | None = No
                 for resultado in resultados:
                     release = resultado.get("compiledRelease") or {}
                     tender = release.get("tender") or {}
+                    publicada_resumen = _fecha_corta(tender.get("datePublished") or release.get("date"))
+                    if publicada_resumen and not (fecha_desde.isoformat() <= publicada_resumen <= fecha_hasta.isoformat()):
+                        continue
                     score, _, _ = evaluar_relevancia(tender.get("description", ""), tender.get("title", ""))
                     ocid = release.get("ocid")
                     if ocid and score >= 3:
