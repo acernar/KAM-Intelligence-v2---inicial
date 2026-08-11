@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 import numpy as np
 from io import BytesIO
 import base64
+from zoneinfo import ZoneInfo
 
 # ==================== BACKEND: GOOGLE SHEETS O JSON LOCAL ====================
 # Detecta automáticamente el entorno:
@@ -1695,6 +1696,7 @@ with st.sidebar:
         df = df_menores
         modulos_disponibles = [
             "🔎 Procesos OECE",
+            "🆕 Últimos 7 días",
             "🧠 Inteligencia Comercial",
             "📊 Dashboard",
             "🗄️ Base de Datos",
@@ -1712,6 +1714,7 @@ with st.sidebar:
         df = df_licitaciones
         modulos_disponibles = [
             "🔎 Procesos OECE",
+            "🆕 Últimos 7 días",
             "🧠 Inteligencia Comercial",
             "📊 Dashboard de Licitaciones",
             "🗄️ Base de Datos de Licitaciones",
@@ -1851,6 +1854,91 @@ if seccion == "🔎 Procesos OECE":
         )
 
 # ==================== SECCIÓN 1: DASHBOARD ====================
+elif seccion == "🆕 Últimos 7 días":
+    hoy_lima = datetime.now(ZoneInfo('America/Lima')).date()
+    desde_7_dias = hoy_lima - timedelta(days=6)
+    filas_recientes = []
+    if not df_menores.empty:
+        for _, row in df_menores.iterrows():
+            fecha_publicacion = pd.to_datetime(row.get('publicado') or row.get('fechaConvocatoria'), errors='coerce')
+            if pd.isna(fecha_publicacion) or not (desde_7_dias <= fecha_publicacion.date() <= hoy_lima):
+                continue
+            filas_recientes.append({
+                'Publicación': fecha_publicacion.date(), 'Tipo': 'Menor ≤8 UIT',
+                'Proceso': row.get('id', ''), 'Entidad': row.get('entidad', ''),
+                'Descripción': row.get('descripcion', ''),
+                'Categoría': row.get('subcategoria', row.get('subcategoria_ti', '')),
+                'Estado': row.get('estado', ''), 'Cierre': row.get('finCotz', ''),
+                'Monto referencial': row.get('montoReferencial', 0),
+                'Monto adjudicado': row.get('montoAdjudicado', 0),
+                'Ganador': row.get('proveedor', ''), 'Fuente oficial': row.get('fuente_url', ''),
+            })
+    if not df_licitaciones.empty:
+        for _, row in df_licitaciones.iterrows():
+            fecha_publicacion = pd.to_datetime(row.get('publicado'), errors='coerce')
+            if pd.isna(fecha_publicacion) or not (desde_7_dias <= fecha_publicacion.date() <= hoy_lima):
+                continue
+            filas_recientes.append({
+                'Publicación': fecha_publicacion.date(), 'Tipo': 'Licitación >8 UIT',
+                'Proceso': row.get('id', ''), 'Entidad': row.get('entidad', ''),
+                'Descripción': row.get('titulo', '') or row.get('descripcion', ''),
+                'Categoría': row.get('subcategoria_ti', row.get('tipo_contratacion', '')),
+                'Estado': row.get('estado', ''), 'Cierre': row.get('fecha_cierre', ''),
+                'Monto referencial': row.get('monto_base', 0),
+                'Monto adjudicado': row.get('monto_adjudicado', 0),
+                'Ganador': row.get('ganador', ''), 'Fuente oficial': row.get('fuente_url', ''),
+            })
+
+    recientes = pd.DataFrame(filas_recientes)
+    st.markdown(f"""
+    <div style="margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Procesos publicados en los últimos 7 días</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Del {desde_7_dias:%d/%m/%Y} al {hoy_lima:%d/%m/%Y} · hora de Lima</div>
+    </div>
+    """, unsafe_allow_html=True)
+    if recientes.empty:
+        st.info("No hay procesos registrados dentro de los últimos 7 días. La página se actualizará con la próxima sincronización.")
+    else:
+        for columna in ['Monto referencial', 'Monto adjudicado']:
+            recientes[columna] = pd.to_numeric(recientes[columna], errors='coerce').fillna(0)
+        recientes['Cierre_dt'] = pd.to_datetime(recientes['Cierre'], errors='coerce')
+        recientes['Días para cierre'] = (recientes['Cierre_dt'] - pd.Timestamp(hoy_lima)).dt.days
+        abiertos = recientes['Estado'].astype(str).str.contains('public|abierto|convoc', case=False, na=False)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Procesos nuevos", len(recientes))
+        c2.metric("Menores", int((recientes['Tipo'] == 'Menor ≤8 UIT').sum()))
+        c3.metric("Licitaciones", int((recientes['Tipo'] == 'Licitación >8 UIT').sum()))
+        c4.metric("Abiertos", int(abiertos.sum()))
+
+        f1, f2, f3 = st.columns([2, 1, 1])
+        with f1:
+            buscar_reciente = st.text_input("Buscar", placeholder="Entidad, descripción o proceso", key="buscar_ultimos_7")
+        with f2:
+            tipos_recientes = st.multiselect("Tipo", sorted(recientes['Tipo'].unique()),
+                                             default=sorted(recientes['Tipo'].unique()), key="tipos_ultimos_7")
+        with f3:
+            categorias_recientes = st.multiselect("Categoría", sorted(x for x in recientes['Categoría'].dropna().unique() if x),
+                                                  key="categorias_ultimos_7")
+        vista_reciente = recientes[recientes['Tipo'].isin(tipos_recientes)].copy()
+        if categorias_recientes:
+            vista_reciente = vista_reciente[vista_reciente['Categoría'].isin(categorias_recientes)]
+        if buscar_reciente:
+            patron = re.escape(buscar_reciente)
+            mascara = vista_reciente[['Proceso', 'Entidad', 'Descripción']].astype(str).apply(
+                lambda col: col.str.contains(patron, case=False, na=False)
+            ).any(axis=1)
+            vista_reciente = vista_reciente[mascara]
+        vista_reciente = vista_reciente.sort_values(['Publicación', 'Cierre_dt'], ascending=[False, True])
+        columnas_recientes = ['Publicación', 'Tipo', 'Proceso', 'Entidad', 'Descripción', 'Categoría', 'Estado',
+                              'Cierre', 'Días para cierre', 'Monto referencial', 'Monto adjudicado', 'Ganador', 'Fuente oficial']
+        st.caption(f"{len(vista_reciente)} procesos mostrados")
+        st.dataframe(vista_reciente[columnas_recientes], use_container_width=True, hide_index=True,
+                     column_config={
+                         'Monto referencial': st.column_config.NumberColumn('Monto referencial', format='S/ %.2f'),
+                         'Monto adjudicado': st.column_config.NumberColumn('Monto adjudicado', format='S/ %.2f'),
+                         'Fuente oficial': st.column_config.LinkColumn('OECE', display_text='Abrir'),
+                     })
+
 elif seccion == "🧠 Inteligencia Comercial":
     st.markdown("""
     <div style="margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:0.5px solid var(--color-border-tertiary)">
