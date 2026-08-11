@@ -42,6 +42,8 @@ TERMINOS_BUSQUEDA = [
     "licenciamiento", "seguridad informatica", "soporte tecnico", "data center",
     "analitica de datos", "business intelligence", "transformacion digital",
     "desarrollo de software", "digitalizacion", "firma digital", "telefonia ip",
+    "elaboracion de expediente tecnico", "supervision de expediente tecnico",
+    "elaboracion de software", "construccion de videovigilancia",
 ]
 
 REGLAS_TI = {
@@ -89,8 +91,8 @@ REGLAS_TI = {
         1: ["ups", "pdu"],
     },
     "Videovigilancia": {
-        3: ["sistema de videovigilancia", "sistema de video vigilancia", "circuito cerrado de television"],
-        2: ["videovigilancia", "video vigilancia", "camara ip", "cctv"],
+        3: ["sistema de videovigilancia", "sistema de video vigilancia", "circuito cerrado de television", "construccion de videovigilancia", "implementacion de videovigilancia", "instalacion de sistema de videovigilancia"],
+        2: ["videovigilancia", "video vigilancia", "camara ip", "cctv", "ampliacion de videovigilancia", "mejoramiento de videovigilancia", "mantenimiento de videovigilancia"],
     },
     "GPON": {
         3: ["red gpon", "sistema gpon", "gigabit passive optical network"],
@@ -118,9 +120,9 @@ REGLAS_TI = {
         1: ["big data", "dashboard", "etl", "data lake"],
     },
     "Desarrollo y Transformación Digital": {
-        3: ["transformacion digital", "desarrollo de software", "fabrica de software", "automatizacion de procesos"],
-        2: ["desarrollo de sistema", "desarrollo de aplicativo", "modernizacion de aplicaciones", "servicios web"],
-        1: ["aplicacion movil", "portal web", "rpa", "low code", "no code"],
+        3: ["transformacion digital", "desarrollo de software", "elaboracion de software", "fabrica de software", "automatizacion de procesos", "implementacion de software"],
+        2: ["desarrollo de sistema", "elaboracion de sistema", "desarrollo de aplicativo", "modernizacion de aplicaciones", "mantenimiento de software", "mejora de software", "servicios web"],
+        1: ["aplicacion movil", "portal web", "rpa", "low code", "no code", "puesta en marcha de software"],
     },
     "Soporte y Servicios Gestionados": {
         3: ["servicio gestionado de ti", "operacion de infraestructura tecnologica", "outsourcing de ti"],
@@ -146,6 +148,11 @@ REGLAS_TI = {
         3: ["capacitacion en tecnologias de informacion", "entrenamiento en ciberseguridad", "capacitacion cloud"],
         2: ["curso de tecnologia", "certificacion tecnologica", "transferencia de conocimiento"],
         1: ["capacitacion informatica", "taller tecnologico"],
+    },
+    "Expedientes Técnicos y Supervisión": {
+        3: ["elaboracion de expediente tecnico", "supervision de elaboracion de expediente tecnico", "consultoria para expediente tecnico"],
+        2: ["revision de expediente tecnico", "evaluacion de expediente tecnico", "actualizacion de expediente tecnico", "supervision de expediente tecnico"],
+        1: ["expediente tecnico", "supervision de estudio definitivo"],
     },
     "Videoconferencia": {
         3: ["videoconferencia", "video conferencia", "zoom", "google meet"],

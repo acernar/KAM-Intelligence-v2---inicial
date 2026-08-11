@@ -78,6 +78,11 @@ def _get_gmail_config():
         pass
     return config
 
+
+def _mostrar_ayuda_gmail_streamlit():
+    st.info("Configura Gmail en Streamlit: **Manage app → Settings → Secrets**. Usa una contraseña de aplicación de Google, no tu contraseña normal.")
+    st.code('''[gmail]\nfrom = "tu-cuenta@gmail.com"\nto = "destino@empresa.com"\napp_password = "contraseña-de-aplicación"''', language='toml')
+
 def _get_ai_api_key(proveedor):
     """Obtiene credenciales de IA desde entorno o Streamlit Secrets."""
     env_name = 'OPENAI_API_KEY' if proveedor == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
@@ -1539,6 +1544,111 @@ df_menores = cargar_procesos()
 df_licitaciones = cargar_licitaciones()
 renovaciones_editadas = cargar_renovaciones_editadas()
 
+
+def construir_universo_inteligencia(df_men, df_lic):
+    """Unifica menores y licitaciones en un esquema comercial comparable."""
+    partes = []
+    if not df_men.empty:
+        men = pd.DataFrame({
+            'id': df_men.get('id', pd.Series(dtype=str)),
+            'tipo_proceso': 'Menor ≤8 UIT',
+            'entidad': df_men.get('entidad', ''),
+            'region': df_men.get('region', ''),
+            'categoria': df_men.get('subcategoria', df_men.get('subcategoria_ti', 'Sin categoría')),
+            'titulo': df_men.get('descripcion', ''),
+            'estado': df_men.get('estado', ''),
+            'resultado': df_men.get('resultadoAdjudicacion', ''),
+            'monto': df_men.get('montoAdjudicado', 0),
+            'ganador': df_men.get('proveedor', ''),
+            'fecha_publicacion': df_men.get('fechaConvocatoria', df_men.get('publicado', '')),
+            'fecha_fin': df_men.get('finContrato', ''),
+            'tipo_procedimiento': 'Contrato menor',
+            'fuente_url': df_men.get('fuente_url', ''),
+        })
+        partes.append(men)
+    if not df_lic.empty:
+        monto_lic = pd.to_numeric(df_lic.get('monto_adjudicado', 0), errors='coerce').fillna(0)
+        monto_base_lic = pd.to_numeric(df_lic.get('monto_base', 0), errors='coerce').fillna(0)
+        monto_lic = monto_lic.where(monto_lic > 0, monto_base_lic)
+        lic = pd.DataFrame({
+            'id': df_lic.get('id', pd.Series(dtype=str)),
+            'tipo_proceso': 'Licitación >8 UIT',
+            'entidad': df_lic.get('entidad', ''),
+            'region': df_lic.get('region', ''),
+            'categoria': df_lic.get('subcategoria_ti', df_lic.get('tipo_contratacion', 'Sin categoría')),
+            'titulo': df_lic.get('titulo', df_lic.get('descripcion', '')),
+            'estado': df_lic.get('estado', ''),
+            'resultado': df_lic.get('estado', ''),
+            'monto': monto_lic,
+            'ganador': df_lic.get('ganador', ''),
+            'fecha_publicacion': df_lic.get('publicado', ''),
+            'fecha_fin': df_lic.get('fin_contrato', ''),
+            'tipo_procedimiento': df_lic.get('tipo_licitacion', ''),
+            'fuente_url': df_lic.get('fuente_url', ''),
+        })
+        partes.append(lic)
+    if not partes:
+        return pd.DataFrame()
+    universo = pd.concat(partes, ignore_index=True)
+    universo['entidad'] = universo['entidad'].fillna('').astype(str).str.strip()
+    universo['categoria'] = universo['categoria'].fillna('Sin categoría').astype(str).replace('', 'Sin categoría')
+    universo['monto'] = pd.to_numeric(
+        universo['monto'].astype(str).str.replace(',', '', regex=False).str.replace(' ', '', regex=False),
+        errors='coerce'
+    ).fillna(0)
+    universo['fecha_publicacion_dt'] = pd.to_datetime(universo['fecha_publicacion'], errors='coerce')
+    universo['fecha_fin_dt'] = pd.to_datetime(universo['fecha_fin'], errors='coerce')
+    return universo[universo['entidad'] != ''].copy()
+
+
+def calcular_renovaciones_predictivas(universo, fecha_corte=None):
+    """Proyecta recurrencias por entidad y categoría usando medianas históricas explicables."""
+    if universo.empty:
+        return pd.DataFrame()
+    fecha_corte = pd.Timestamp(fecha_corte or datetime.now().date())
+    filas = []
+    for (entidad, categoria), grupo in universo.groupby(['entidad', 'categoria'], dropna=False):
+        fechas = sorted(pd.Series(grupo['fecha_publicacion_dt'].dropna().dt.normalize().unique()).tolist())
+        if not fechas:
+            continue
+        ultima = pd.Timestamp(fechas[-1])
+        intervalos = [(pd.Timestamp(b) - pd.Timestamp(a)).days for a, b in zip(fechas, fechas[1:]) if (pd.Timestamp(b) - pd.Timestamp(a)).days >= 45]
+        fines = grupo['fecha_fin_dt'].dropna()
+        evidencia = len(fechas)
+        if intervalos:
+            intervalo = int(pd.Series(intervalos).median())
+            proxima = ultima + pd.Timedelta(days=intervalo)
+            confianza = 'Alta' if len(intervalos) >= 2 else 'Media'
+            metodo = f'Mediana histórica de {len(intervalos)} intervalo(s): {intervalo} días'
+        elif not fines.empty and pd.Timestamp(fines.max()) > ultima:
+            proxima = pd.Timestamp(fines.max()).normalize()
+            intervalo = (proxima - ultima).days
+            confianza = 'Media'
+            metodo = 'Fecha de fin contractual publicada'
+        else:
+            intervalo = 365
+            proxima = ultima + pd.Timedelta(days=intervalo)
+            confianza = 'Baja'
+            metodo = 'Supuesto anual; falta una segunda compra comparable'
+        while proxima < fecha_corte - pd.Timedelta(days=30):
+            proxima += pd.Timedelta(days=max(intervalo, 1))
+        ganador = grupo.loc[grupo['ganador'].astype(str).str.strip() != '', 'ganador']
+        montos_positivos = grupo.loc[grupo['monto'] > 0, 'monto']
+        filas.append({
+            'entidad': entidad, 'categoria': categoria, 'ultima_compra': ultima.date(),
+            'proxima_renovacion': proxima.date(), 'dias': (proxima - fecha_corte).days,
+            'confianza': confianza, 'evidencias': evidencia, 'metodo': metodo,
+            'monto_historico': float(grupo['monto'].sum()),
+            'ticket_promedio': float(montos_positivos.mean()) if not montos_positivos.empty else 0,
+            'ultimo_ganador': ganador.iloc[-1] if not ganador.empty else 'Sin información',
+            'procesos': len(grupo),
+        })
+    return pd.DataFrame(filas).sort_values(['dias', 'confianza']) if filas else pd.DataFrame()
+
+
+universo_inteligencia = construir_universo_inteligencia(df_menores, df_licitaciones)
+renovaciones_predictivas = calcular_renovaciones_predictivas(universo_inteligencia)
+
 if df_menores.empty and df_licitaciones.empty:
     st.error("❌ No hay datos disponibles. Agrega procesos para comenzar.")
     st.stop()
@@ -1585,6 +1695,7 @@ with st.sidebar:
         df = df_menores
         modulos_disponibles = [
             "🔎 Procesos OECE",
+            "🧠 Inteligencia Comercial",
             "📊 Dashboard",
             "🗄️ Base de Datos",
             "👥 CRM y Seguimiento",
@@ -1601,6 +1712,7 @@ with st.sidebar:
         df = df_licitaciones
         modulos_disponibles = [
             "🔎 Procesos OECE",
+            "🧠 Inteligencia Comercial",
             "📊 Dashboard de Licitaciones",
             "🗄️ Base de Datos de Licitaciones",
             "👥 CRM y Seguimiento",
@@ -1665,7 +1777,9 @@ if seccion == "🔎 Procesos OECE":
                 'Tipo': 'Menor <8 UIT', 'Proceso': row.get('id', ''),
                 'Descripción': row.get('descripcion', ''), 'Entidad': row.get('entidad', ''),
                 'Categoría TI': row.get('subcategoria', ''), 'Estado': row.get('estado', ''),
-                'Monto': row.get('montoReferencial', 0), 'Publicación': row.get('publicado', ''),
+                'Monto referencial': row.get('montoReferencial', 0),
+                'Monto adjudicado': row.get('montoAdjudicado', 0),
+                'Ganador': row.get('proveedor', ''), 'Publicación': row.get('publicado', ''),
                 'Cierre de ofertas': row.get('finCotz', ''),
                 'Adjudicación': row.get('fechaAdjudicacionEstimada', ''),
                 'Inicio contrato': row.get('inicioContrato', ''),
@@ -1679,7 +1793,9 @@ if seccion == "🔎 Procesos OECE":
                 'Tipo': 'Licitación ≥8 UIT', 'Proceso': row.get('id', ''),
                 'Descripción': row.get('titulo', '') or row.get('descripcion', ''),
                 'Entidad': row.get('entidad', ''), 'Categoría TI': row.get('subcategoria_ti', ''),
-                'Estado': row.get('estado', ''), 'Monto': row.get('monto_base', 0),
+                'Estado': row.get('estado', ''), 'Monto referencial': row.get('monto_base', 0),
+                'Monto adjudicado': row.get('monto_adjudicado', 0),
+                'Ganador': row.get('ganador', ''),
                 'Publicación': row.get('publicado', ''), 'Cierre de ofertas': row.get('fecha_cierre', ''),
                 'Adjudicación': row.get('adjudicacion', ''),
                 'Inicio contrato': row.get('inicio_contrato', ''),
@@ -1691,7 +1807,14 @@ if seccion == "🔎 Procesos OECE":
     if df_oece.empty:
         st.info("Todavía no hay procesos identificados como OECE. Ejecuta una sincronización o actualiza la página.")
     else:
-        df_oece['Monto'] = pd.to_numeric(df_oece['Monto'], errors='coerce').fillna(0)
+        for columna_monto in ['Monto referencial', 'Monto adjudicado']:
+            df_oece[columna_monto] = pd.to_numeric(df_oece[columna_monto], errors='coerce').fillna(0)
+        df_oece['Situación del monto'] = df_oece.apply(
+            lambda r: 'Adjudicado' if r['Monto adjudicado'] > 0 else (
+                'Pendiente de adjudicación' if any(x in str(r['Estado']).lower() for x in ('public', 'abierto', 'evaluación'))
+                else 'Sin monto oficial publicado'
+            ), axis=1
+        )
         col_k1, col_k2, col_k3 = st.columns(3)
         col_k1.metric("Procesos OECE", len(df_oece))
         col_k2.metric("Menores", int((df_oece['Tipo'] == 'Menor <8 UIT').sum()))
@@ -1714,19 +1837,173 @@ if seccion == "🔎 Procesos OECE":
                 lambda col: col.str.contains(patron, case=False, na=False)
             ).any(axis=1)
             vista_oece = vista_oece[mascara]
-        vista_oece = vista_oece.sort_values(['Publicación', 'Monto'], ascending=[False, False])
+        vista_oece = vista_oece.sort_values(['Publicación', 'Monto referencial'], ascending=[False, False])
         st.caption(f"{len(vista_oece)} procesos mostrados")
         st.dataframe(
             vista_oece,
             use_container_width=True,
             hide_index=True,
             column_config={
-                'Monto': st.column_config.NumberColumn('Monto', format='S/ %.2f'),
+                'Monto referencial': st.column_config.NumberColumn('Monto referencial', format='S/ %.2f'),
+                'Monto adjudicado': st.column_config.NumberColumn('Monto adjudicado', format='S/ %.2f'),
                 'Fuente oficial': st.column_config.LinkColumn('OECE', display_text='Abrir'),
             },
         )
 
 # ==================== SECCIÓN 1: DASHBOARD ====================
+elif seccion == "🧠 Inteligencia Comercial":
+    st.markdown("""
+    <div style="margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Inteligencia Comercial · Mercado público TI</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Entidades, recurrencia, renovaciones, competencia y estrategia de participación</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if universo_inteligencia.empty:
+        st.info("No hay información suficiente para construir inteligencia comercial.")
+    else:
+        tab_entidad, tab_renovaciones, tab_mercado, tab_participacion = st.tabs([
+            "🏛️ Entidad 360°", "📅 Renovaciones previstas", "🏆 Mercado y competencia", "🤝 Solo o consorcio"
+        ])
+
+        with tab_entidad:
+            entidades = sorted(universo_inteligencia['entidad'].dropna().unique().tolist())
+            entidad_sel = st.selectbox("Selecciona una entidad", entidades, key="intel_entidad_360")
+            datos_entidad = universo_inteligencia[universo_inteligencia['entidad'] == entidad_sel].copy()
+            montos_entidad = datos_entidad.loc[datos_entidad['monto'] > 0, 'monto']
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Procesos encontrados", len(datos_entidad))
+            col2.metric("Categorías compradas", datos_entidad['categoria'].nunique())
+            col3.metric("Mercado histórico", f"S/ {datos_entidad['monto'].sum()/1e6:.2f} M")
+            col4.metric("Ticket promedio", f"S/ {(montos_entidad.mean() if not montos_entidad.empty else 0):,.0f}")
+
+            col_hist, col_cat = st.columns([1.25, 1])
+            with col_hist:
+                por_fecha = datos_entidad.dropna(subset=['fecha_publicacion_dt']).copy()
+                if not por_fecha.empty:
+                    por_fecha['año'] = por_fecha['fecha_publicacion_dt'].dt.year
+                    anual = por_fecha.groupby('año').agg(procesos=('id', 'count'), monto=('monto', 'sum')).reset_index()
+                    fig = px.bar(anual, x='año', y='monto', text='procesos', title='Compras por año',
+                                 labels={'monto': 'Monto (S/)', 'año': ''}, template='plotly_white')
+                    fig.update_traces(marker_color='#534AB7', hovertemplate='Año %{x}<br>S/ %{y:,.0f}<br>%{text} procesos<extra></extra>')
+                    st.plotly_chart(fig, use_container_width=True)
+            with col_cat:
+                categorias_entidad = datos_entidad.groupby('categoria').agg(
+                    procesos=('id', 'count'), monto=('monto', 'sum')
+                ).sort_values(['procesos', 'monto'], ascending=False).reset_index()
+                st.markdown("##### Qué compra")
+                st.dataframe(categorias_entidad, use_container_width=True, hide_index=True,
+                             column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+
+            st.markdown("##### Proveedores ganadores conocidos")
+            ganadores_entidad = datos_entidad[
+                ~datos_entidad['ganador'].fillna('').astype(str).str.upper().isin(['', 'SIN DEFINIR', 'DESIERTO'])
+            ].groupby('ganador').agg(procesos=('id', 'count'), monto=('monto', 'sum')).sort_values('procesos', ascending=False).reset_index()
+            if ganadores_entidad.empty:
+                st.caption("Todavía no hay ganadores identificados para esta entidad.")
+            else:
+                st.dataframe(ganadores_entidad.head(15), use_container_width=True, hide_index=True,
+                             column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+
+            st.markdown("##### Historial de procesos")
+            cols_hist = ['fecha_publicacion', 'id', 'tipo_proceso', 'categoria', 'titulo', 'estado', 'monto', 'ganador']
+            st.dataframe(datos_entidad.sort_values('fecha_publicacion_dt', ascending=False)[cols_hist],
+                         use_container_width=True, hide_index=True,
+                         column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+
+        with tab_renovaciones:
+            st.caption("Las fechas son estimaciones comerciales. Cada fila explica la evidencia utilizada; confirma siempre el PAC, contrato y bases.")
+            horizonte = st.slider("Horizonte de aviso (días)", 30, 540, 180, 30, key="intel_horizonte")
+            niveles = st.multiselect("Confianza", ['Alta', 'Media', 'Baja'], default=['Alta', 'Media'], key="intel_confianza")
+            previstas = renovaciones_predictivas[
+                renovaciones_predictivas['dias'].between(-30, horizonte) &
+                renovaciones_predictivas['confianza'].isin(niveles)
+            ].copy() if not renovaciones_predictivas.empty else pd.DataFrame()
+            if previstas.empty:
+                st.info("No hay renovaciones estimadas con estos filtros.")
+            else:
+                este_mes = int(previstas['dias'].between(0, 30).sum())
+                proximos_90 = int(previstas['dias'].between(31, 90).sum())
+                alta = int((previstas['confianza'] == 'Alta').sum())
+                c1, c2, c3, c4 = st.columns(4)
+                c1.metric("Este mes", este_mes)
+                c2.metric("31–90 días", proximos_90)
+                c3.metric("Confianza alta", alta)
+                c4.metric("Total en horizonte", len(previstas))
+                cols_ren = ['proxima_renovacion', 'dias', 'confianza', 'entidad', 'categoria', 'procesos',
+                            'ticket_promedio', 'ultimo_ganador', 'metodo']
+                st.dataframe(previstas[cols_ren], use_container_width=True, hide_index=True,
+                             column_config={'ticket_promedio': st.column_config.NumberColumn('Ticket promedio', format='S/ %.0f')})
+
+        with tab_mercado:
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("##### Entidades con mayor recurrencia")
+                recurrentes = universo_inteligencia.groupby('entidad').agg(
+                    procesos=('id', 'count'), categorias=('categoria', 'nunique'), monto=('monto', 'sum')
+                ).sort_values(['procesos', 'monto'], ascending=False).head(25).reset_index()
+                st.dataframe(recurrentes, use_container_width=True, hide_index=True,
+                             column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+            with col2:
+                st.markdown("##### Ganadores más frecuentes")
+                ganadores_validos = universo_inteligencia[
+                    ~universo_inteligencia['ganador'].fillna('').astype(str).str.upper().isin(['', 'SIN DEFINIR', 'DESIERTO'])
+                ]
+                ranking = ganadores_validos.groupby('ganador').agg(
+                    procesos=('id', 'count'), entidades=('entidad', 'nunique'), monto=('monto', 'sum')
+                ).sort_values(['procesos', 'monto'], ascending=False).head(25).reset_index()
+                st.dataframe(ranking, use_container_width=True, hide_index=True,
+                             column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+
+            st.markdown("##### Procesos desiertos o cancelados para seguimiento")
+            mascara_reintento = (
+                universo_inteligencia['estado'].astype(str).str.contains('desiert|cancel', case=False, na=False) |
+                universo_inteligencia['resultado'].astype(str).str.contains('desiert|cancel', case=False, na=False)
+            )
+            reintentos = universo_inteligencia[mascara_reintento].sort_values('fecha_publicacion_dt', ascending=False)
+            if reintentos.empty:
+                st.caption("No se identificaron procesos desiertos o cancelados.")
+            else:
+                st.dataframe(reintentos[['fecha_publicacion', 'id', 'entidad', 'categoria', 'titulo', 'estado', 'monto']],
+                             use_container_width=True, hide_index=True,
+                             column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+
+        with tab_participacion:
+            st.caption("Configura el perfil real de Qubits. La recomendación es comercial y debe confirmarse leyendo las bases y verificando el RNP.")
+            c1, c2 = st.columns(2)
+            with c1:
+                ticket_solo = st.number_input("Mayor contrato similar acreditable (S/)", min_value=0.0,
+                                              value=750000.0, step=50000.0, key="perfil_ticket_solo")
+            with c2:
+                garantia_disponible = st.number_input("Capacidad disponible para garantías (S/)", min_value=0.0,
+                                                      value=100000.0, step=10000.0, key="perfil_garantia")
+            solo_activas = universo_inteligencia[
+                universo_inteligencia['estado'].astype(str).str.contains('public|abierto|convoc', case=False, na=False)
+            ].copy()
+            if solo_activas.empty:
+                st.info("No se identificaron procesos actualmente abiertos con la información disponible.")
+            else:
+                def recomendar_participacion(row):
+                    monto = float(row['monto'] or 0)
+                    if row['tipo_proceso'] == 'Menor ≤8 UIT':
+                        return 'Solo viable', 'Contrato menor; confirmar requisitos técnicos y disponibilidad.'
+                    if monto <= 0:
+                        return 'Revisar bases', 'El monto no está publicado o no fue identificado.'
+                    garantia_estimada = monto * 0.10
+                    if monto <= ticket_solo and garantia_estimada <= garantia_disponible:
+                        return 'Solo viable', 'Monto dentro de experiencia y garantía configuradas.'
+                    if monto <= max(ticket_solo * 2.5, ticket_solo + 1) and garantia_estimada <= max(garantia_disponible * 2.5, garantia_disponible + 1):
+                        return 'Consorcio recomendado', 'Conviene sumar experiencia, respaldo financiero o certificaciones.'
+                    return 'Consorcio necesario / no priorizar', 'Supera ampliamente el perfil configurado; revisar porcentaje y obligaciones.'
+                recomendaciones = solo_activas.apply(recomendar_participacion, axis=1, result_type='expand')
+                solo_activas[['recomendacion', 'motivo']] = recomendaciones
+                filtro_rec = st.multiselect("Mostrar", solo_activas['recomendacion'].unique().tolist(),
+                                            default=solo_activas['recomendacion'].unique().tolist(), key="filtro_participacion")
+                vista_part = solo_activas[solo_activas['recomendacion'].isin(filtro_rec)].sort_values('monto')
+                st.dataframe(vista_part[['id', 'entidad', 'categoria', 'tipo_procedimiento', 'monto', 'recomendacion', 'motivo']],
+                             use_container_width=True, hide_index=True,
+                             column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+
 elif "Menores" in tipo_proceso and seccion == "📊 Dashboard":
     st.markdown(f"""
     <div style="display:flex;align-items:center;justify-content:space-between;
@@ -2232,6 +2509,7 @@ elif "Menores" in tipo_proceso and seccion == "📅 Calendario de Renovaciones":
         # Filtrar
         renov_filtered = renov_df[
             (renov_df['estado_urgencia'].isin(urgencia_filter)) &
+            (renov_df['dias_para_renovar'] >= 0) &
             (renov_df['dias_para_renovar'] <= meses * 30) &
             (renov_df['region'].isin(region_filter)) &
             (renov_df['confianza'].isin(confianza_filter))
@@ -2242,9 +2520,11 @@ elif "Menores" in tipo_proceso and seccion == "📅 Calendario de Renovaciones":
             destino_aviso = st.text_input("Destinatario(s)", value=gmail_cfg['to'],
                                            help="Puedes separar varios correos con comas.", key="destino_aviso_menores")
             st.caption(f"Se enviará un resumen de {len(renov_filtered)} renovaciones visibles con sus fechas y días restantes.")
+            if not all([gmail_cfg['from'], gmail_cfg['pass']]):
+                _mostrar_ayuda_gmail_streamlit()
             if st.button("Enviar aviso ahora", key="enviar_aviso_menores"):
                 if not all([destino_aviso, gmail_cfg['from'], gmail_cfg['pass']]):
-                    st.error("Gmail no está configurado. Agrega GMAIL_FROM, GMAIL_TO y GMAIL_APP_PASS en Secrets.")
+                    st.error("Falta configurar la cuenta remitente, la contraseña de aplicación o el destinatario.")
                 elif renov_filtered.empty:
                     st.warning("No hay renovaciones visibles para enviar.")
                 else:
@@ -3625,19 +3905,26 @@ if "Licitaciones" in tipo_proceso:
                 gmail_cfg = _get_gmail_config()
                 destino_aviso_lic = st.text_input("Destinatario(s)", value=gmail_cfg['to'],
                                                    help="Puedes separar varios correos con comas.", key="destino_aviso_licitaciones")
-                st.caption(f"Se enviará un resumen de {len(renovaciones_filtradas)} contratos visibles.")
+                horizonte_email = st.select_slider("Avisar vencimientos dentro de", options=[30, 60, 90, 180],
+                                                    value=90, format_func=lambda x: f"{x} días", key="horizonte_email_licitaciones")
+                avisos_email_lic = renovaciones[
+                    renovaciones['dias_para_vencer'].between(0, int(horizonte_email))
+                ].copy()
+                st.caption(f"Se enviará un resumen de {len(avisos_email_lic)} contratos futuros; los vencidos no se incluyen.")
+                if not all([gmail_cfg['from'], gmail_cfg['pass']]):
+                    _mostrar_ayuda_gmail_streamlit()
                 if st.button("Enviar aviso ahora", key="enviar_aviso_licitaciones"):
                     if not all([destino_aviso_lic, gmail_cfg['from'], gmail_cfg['pass']]):
-                        st.error("Gmail no está configurado. Agrega GMAIL_FROM, GMAIL_TO y GMAIL_APP_PASS en Secrets.")
-                    elif renovaciones_filtradas.empty:
-                        st.warning("No hay vencimientos visibles para enviar.")
+                        st.error("Falta configurar la cuenta remitente, la contraseña de aplicación o el destinatario.")
+                    elif avisos_email_lic.empty:
+                        st.warning("No hay vencimientos futuros dentro del horizonte elegido.")
                     else:
                         from seace_sync import enviar_alerta_eventos
                         eventos_email = [{
                             'tipo': 'Fin de contrato', 'entidad': r['entidad'],
                             'proceso': r['id'], 'fecha': r['fin_dt'].strftime('%Y-%m-%d'),
                             'dias': int(r['dias_para_vencer']),
-                        } for _, r in renovaciones_filtradas.iterrows()]
+                        } for _, r in avisos_email_lic.iterrows()]
                         try:
                             enviar_alerta_eventos(eventos_email, destino_aviso_lic, gmail_cfg['from'], gmail_cfg['pass'])
                             st.success(f"Aviso enviado a {destino_aviso_lic}")
