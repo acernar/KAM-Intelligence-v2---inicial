@@ -67,7 +67,7 @@ def _get_gmail_config():
     """Obtiene Gmail desde variables de entorno o Streamlit Secrets sin exponer valores."""
     config = {
         'from': os.environ.get('GMAIL_FROM', ''),
-        'to': os.environ.get('GMAIL_TO', ''),
+        'to': os.environ.get('GMAIL_TO', 'acernar@gmail.com,alexander.cerna@qubitssales.com'),
         'pass': os.environ.get('GMAIL_APP_PASS', ''),
     }
     try:
@@ -1855,6 +1855,7 @@ if seccion == "🔎 Procesos OECE":
 
 # ==================== SECCIÓN 1: DASHBOARD ====================
 elif seccion == "🆕 Últimos 7 días":
+    from seace_sync import evaluar_politica_nube
     hoy_lima = datetime.now(ZoneInfo('America/Lima')).date()
     desde_7_dias = hoy_lima - timedelta(days=6)
     filas_recientes = []
@@ -1863,6 +1864,7 @@ elif seccion == "🆕 Últimos 7 días":
             fecha_publicacion = pd.to_datetime(row.get('publicado') or row.get('fechaConvocatoria'), errors='coerce')
             if pd.isna(fecha_publicacion) or not (desde_7_dias <= fecha_publicacion.date() <= hoy_lima):
                 continue
+            politica_nube = evaluar_politica_nube(row.get('descripcion', ''), row.get('oportunidad', ''))
             filas_recientes.append({
                 'Publicación': fecha_publicacion.date(), 'Tipo': 'Menor ≤8 UIT',
                 'Proceso': row.get('id', ''), 'Entidad': row.get('entidad', ''),
@@ -1872,12 +1874,16 @@ elif seccion == "🆕 Últimos 7 días":
                 'Monto referencial': row.get('montoReferencial', 0),
                 'Monto adjudicado': row.get('montoAdjudicado', 0),
                 'Ganador': row.get('proveedor', ''), 'Fuente oficial': row.get('fuente_url', ''),
+                'Nube detectada': row.get('proveedor_nube_detectado', '') or politica_nube['proveedor_nube_detectado'],
+                'Decisión': row.get('decision_comercial', '') or politica_nube['decision_comercial'],
+                'Motivo': row.get('motivo_decision', '') or politica_nube['motivo_decision'],
             })
     if not df_licitaciones.empty:
         for _, row in df_licitaciones.iterrows():
             fecha_publicacion = pd.to_datetime(row.get('publicado'), errors='coerce')
             if pd.isna(fecha_publicacion) or not (desde_7_dias <= fecha_publicacion.date() <= hoy_lima):
                 continue
+            politica_nube = evaluar_politica_nube(row.get('titulo', ''), row.get('descripcion', ''))
             filas_recientes.append({
                 'Publicación': fecha_publicacion.date(), 'Tipo': 'Licitación >8 UIT',
                 'Proceso': row.get('id', ''), 'Entidad': row.get('entidad', ''),
@@ -1887,6 +1893,9 @@ elif seccion == "🆕 Últimos 7 días":
                 'Monto referencial': row.get('monto_base', 0),
                 'Monto adjudicado': row.get('monto_adjudicado', 0),
                 'Ganador': row.get('ganador', ''), 'Fuente oficial': row.get('fuente_url', ''),
+                'Nube detectada': row.get('proveedor_nube_detectado', '') or politica_nube['proveedor_nube_detectado'],
+                'Decisión': row.get('decision_comercial', '') or politica_nube['decision_comercial'],
+                'Motivo': row.get('motivo_decision', '') or politica_nube['motivo_decision'],
             })
 
     recientes = pd.DataFrame(filas_recientes)
@@ -1903,12 +1912,11 @@ elif seccion == "🆕 Últimos 7 días":
             recientes[columna] = pd.to_numeric(recientes[columna], errors='coerce').fillna(0)
         recientes['Cierre_dt'] = pd.to_datetime(recientes['Cierre'], errors='coerce')
         recientes['Días para cierre'] = (recientes['Cierre_dt'] - pd.Timestamp(hoy_lima)).dt.days
-        abiertos = recientes['Estado'].astype(str).str.contains('public|abierto|convoc', case=False, na=False)
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Procesos nuevos", len(recientes))
         c2.metric("Menores", int((recientes['Tipo'] == 'Menor ≤8 UIT').sum()))
         c3.metric("Licitaciones", int((recientes['Tipo'] == 'Licitación >8 UIT').sum()))
-        c4.metric("Abiertos", int(abiertos.sum()))
+        c4.metric("Descartados GCP", int((recientes['Decisión'] == 'DESCARTAR').sum()))
 
         f1, f2, f3 = st.columns([2, 1, 1])
         with f1:
@@ -1930,7 +1938,8 @@ elif seccion == "🆕 Últimos 7 días":
             vista_reciente = vista_reciente[mascara]
         vista_reciente = vista_reciente.sort_values(['Publicación', 'Cierre_dt'], ascending=[False, True])
         columnas_recientes = ['Publicación', 'Tipo', 'Proceso', 'Entidad', 'Descripción', 'Categoría', 'Estado',
-                              'Cierre', 'Días para cierre', 'Monto referencial', 'Monto adjudicado', 'Ganador', 'Fuente oficial']
+                              'Cierre', 'Días para cierre', 'Monto referencial', 'Monto adjudicado', 'Ganador',
+                              'Nube detectada', 'Decisión', 'Motivo', 'Fuente oficial']
         st.caption(f"{len(vista_reciente)} procesos mostrados")
         st.dataframe(vista_reciente[columnas_recientes], use_container_width=True, hide_index=True,
                      column_config={
@@ -3396,7 +3405,7 @@ if "Licitaciones" in tipo_proceso:
 
         if ejecutar_sync_oece:
             try:
-                from seace_sync import descargar_oportunidades_oece
+                from seace_sync import descargar_oportunidades_oece, enriquecer_decision_con_bases
                 fecha_hasta_oece = datetime.now().date()
                 fecha_desde_oece = fecha_hasta_oece - timedelta(days=int(dias_oece))
                 with st.spinner("Consultando OECE y evaluando oportunidades TI..."):
@@ -3407,6 +3416,8 @@ if "Licitaciones" in tipo_proceso:
                     procesos_actuales = cargar_procesos_raw()
                     nuevas_licitaciones = [lic for lic in encontradas if lic.get('id') not in actuales]
                     nuevos_menores = [proc for proc in menores_encontradas if proc.get('id') not in procesos_actuales]
+                    nuevas_licitaciones = [enriquecer_decision_con_bases(lic) for lic in nuevas_licitaciones]
+                    nuevos_menores = [enriquecer_decision_con_bases(proc) for proc in nuevos_menores]
                     for lic in nuevas_licitaciones:
                         actuales[lic['id']] = lic
                     for proc in nuevos_menores:
@@ -3415,10 +3426,24 @@ if "Licitaciones" in tipo_proceso:
                         guardar_licitaciones_raw(actuales)
                     if nuevos_menores:
                         guardar_procesos_raw(procesos_actuales)
+                    aviso_email = ""
+                    if nuevas_licitaciones or nuevos_menores:
+                        gmail_cfg = _get_gmail_config()
+                        if all([gmail_cfg['from'], gmail_cfg['to'], gmail_cfg['pass']]):
+                            try:
+                                from seace_sync import enviar_email
+                                enviar_email(nuevas_licitaciones, nuevos_menores,
+                                             destinatario=gmail_cfg['to'], remitente=gmail_cfg['from'],
+                                             app_password=gmail_cfg['pass'])
+                                aviso_email = " Correo de alerta enviado."
+                            except Exception as error_email:
+                                aviso_email = f" No se pudo enviar el correo: {error_email}"
+                        else:
+                            aviso_email = " Gmail de Streamlit aún no está configurado."
                 st.session_state['oece_sync_mensaje'] = (
                     f"OECE consultado: {estadisticas['candidatos']} candidatos TI, "
                     f"{len(nuevos_menores)} procesos menores y {len(nuevas_licitaciones)} licitaciones "
-                    f"nuevas incorporadas al Forecast."
+                    f"nuevas incorporadas al Forecast.{aviso_email}"
                 )
                 st.rerun()
             except Exception as e:

@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from io import BytesIO
 
 API_BASE = "https://contratacionesabiertas.oece.gob.pe/api/v1"
 SPREADSHEET_ID = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
@@ -27,7 +28,7 @@ HOJA_SYNC_LOG = "sync_log"
 UIT_POR_ANIO = {2025: 5350, 2026: 5500}
 
 GMAIL_FROM = os.environ.get("GMAIL_FROM", "")
-GMAIL_TO = os.environ.get("GMAIL_TO", "")
+GMAIL_TO = os.environ.get("GMAIL_TO", "acernar@gmail.com,alexander.cerna@qubitssales.com")
 GMAIL_APP_PASS = os.environ.get("GMAIL_APP_PASS", "")
 
 # Una consulta por grupo reduce llamadas; el filtro de puntuación decide la relevancia final.
@@ -274,6 +275,109 @@ def _estado_licitacion(release: dict) -> str:
     return "Publicado"
 
 
+def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -> dict:
+    """Aplica la política Qubits: GCP se descarta; otras nubes se evalúan."""
+    documentos = documentos or []
+    texto_documentos = " ".join(
+        f"{doc.get('title', '')} {doc.get('description', '')}" for doc in documentos if isinstance(doc, dict)
+    )
+    texto = normalizar(f"{titulo} {descripcion} {texto_documentos}")
+    workspace = any(frase in texto for frase in (
+        "google workspace", "gmail empresarial", "correo google", "correo electronico google"
+    ))
+    proveedores = {
+        "Google Cloud (GCP)": (
+            "google cloud platform", "nube google", "infraestructura google cloud", "servicios gcp",
+            "compute engine", "cloud storage", "bigquery", "vertex ai", "google kubernetes engine",
+            "gke", "cloud sql", "apigee",
+        ),
+        "Amazon Web Services (AWS)": ("amazon web services", "nube aws", "servicios aws", "aws cloud"),
+        "Microsoft Azure": ("microsoft azure", "nube azure", "azure cloud"),
+        "Oracle Cloud": ("oracle cloud", "oci cloud", "oracle cloud infrastructure"),
+        "Huawei Cloud": ("huawei cloud", "nube huawei"),
+        "IBM Cloud": ("ibm cloud", "nube ibm"),
+        "Nube privada/multinube": ("nube privada", "multinube", "multi cloud", "multicloud"),
+    }
+    detectados = [nombre for nombre, frases in proveedores.items() if any(frase in texto for frase in frases)]
+    es_google_cloud = "Google Cloud (GCP)" in detectados
+    # "Google Workspace" por sí solo pertenece a colaboración, no a infraestructura GCP.
+    if workspace and es_google_cloud and not any(frase in texto for frase in proveedores["Google Cloud (GCP)"][:-1]):
+        es_google_cloud = False
+        detectados = [p for p in detectados if p != "Google Cloud (GCP)"]
+    menciona_nube = any(frase in texto for frase in (
+        "nube", "cloud", "iaas", "paas", "infraestructura como servicio", "servicio de computo"
+    )) or bool(detectados)
+    if es_google_cloud:
+        decision = "DESCARTAR"
+        motivo = "La documentación disponible identifica infraestructura Google Cloud/GCP, excluida por política comercial Qubits."
+    elif detectados:
+        decision = "EVALUAR"
+        motivo = f"Proveedor de nube detectado: {', '.join(detectados)}. No corresponde a GCP."
+    elif menciona_nube:
+        decision = "REVISAR BASES"
+        motivo = "El proceso menciona nube, pero el proveedor no se identifica en el título, descripción o metadatos de las bases."
+    else:
+        decision = "EVALUAR"
+        motivo = "No se detectó una contratación de infraestructura Google Cloud/GCP."
+    return {
+        "proveedor_nube_detectado": ", ".join(detectados) if detectados else ("Google Workspace" if workspace else "No identificado"),
+        "decision_comercial": decision,
+        "motivo_decision": motivo,
+        "lectura_bases": "Metadatos OCDS revisados" if documentos else "Sin bases accesibles en OCDS; revisión pendiente",
+    }
+
+
+def enriquecer_decision_con_bases(oportunidad: dict, max_mb: int = 25, max_paginas: int = 250) -> dict:
+    """Lee el PDF de bases de procesos de nube nuevos y confirma la política GCP."""
+    texto_inicial = normalizar(
+        f"{oportunidad.get('titulo', '')} {oportunidad.get('descripcion', '')} "
+        f"{oportunidad.get('subcategoria_ti', oportunidad.get('subcategoria', ''))}"
+    )
+    if not any(frase in texto_inicial for frase in ("nube", "cloud", "iaas", "paas")):
+        return oportunidad
+    documentos = oportunidad.get("documentos_bases") or []
+    if isinstance(documentos, str):
+        try:
+            documentos = json.loads(documentos)
+        except json.JSONDecodeError:
+            documentos = []
+    candidatos = [doc for doc in documentos if isinstance(doc, dict) and str(doc.get("formato", "")).lower() == "pdf" and doc.get("url")]
+    candidatos.sort(key=lambda doc: (
+        "bases integradas" in normalizar(doc.get("titulo", "")),
+        "bases" in normalizar(doc.get("titulo", "")),
+        doc.get("fecha", ""),
+    ), reverse=True)
+    if not candidatos:
+        oportunidad["lectura_bases"] = "REVISIÓN PENDIENTE: OECE no publicó bases PDF accesibles"
+        if oportunidad.get("decision_comercial") == "EVALUAR" and oportunidad.get("proveedor_nube_detectado") == "No identificado":
+            oportunidad["decision_comercial"] = "REVISAR BASES"
+        return oportunidad
+    documento = candidatos[0]
+    try:
+        from pypdf import PdfReader
+        request = urllib.request.Request(documento["url"], headers=OECE_HEADERS)
+        with urllib.request.urlopen(request, timeout=120) as response:
+            contenido = response.read(max_mb * 1024 * 1024 + 1)
+        if len(contenido) > max_mb * 1024 * 1024:
+            raise ValueError(f"PDF supera {max_mb} MB")
+        lector = PdfReader(BytesIO(contenido))
+        texto_bases = " ".join((pagina.extract_text() or "") for pagina in lector.pages[:max_paginas])
+        if not texto_bases.strip():
+            raise ValueError("PDF sin texto extraíble")
+        politica = evaluar_politica_nube(
+            oportunidad.get("titulo", oportunidad.get("descripcion", "")), texto_bases
+        )
+        oportunidad.update(politica)
+        oportunidad["lectura_bases"] = f"LEÍDO: {documento.get('titulo', 'Bases')} ({min(len(lector.pages), max_paginas)} páginas revisadas)"
+        oportunidad["base_revisada_url"] = documento["url"]
+    except Exception as exc:
+        oportunidad["lectura_bases"] = f"REVISIÓN PENDIENTE: no se pudo leer {documento.get('titulo', 'el PDF')} ({exc})"
+        if oportunidad.get("proveedor_nube_detectado") == "No identificado":
+            oportunidad["decision_comercial"] = "REVISAR BASES"
+            oportunidad["motivo_decision"] = "El proceso es de nube y las bases no pudieron leerse automáticamente."
+    return oportunidad
+
+
 def convertir_record(record: dict) -> dict | None:
     release = record.get("compiledRelease") or {}
     tender = release.get("tender") or {}
@@ -300,7 +404,14 @@ def convertir_record(record: dict) -> dict | None:
     documentos = tender.get("documents") or []
     nomenclatura = str(tender.get("title") or record.get("ocid") or release.get("ocid"))
 
-    return {
+    documentos_normalizados = [{
+        "id": doc.get("id", ""), "titulo": doc.get("title", ""),
+        "descripcion": doc.get("description", ""), "url": doc.get("url", ""),
+        "formato": doc.get("format", ""), "fecha": _fecha_corta(doc.get("datePublished") or doc.get("dateModified")),
+    } for doc in documentos if isinstance(doc, dict)]
+    politica_nube = evaluar_politica_nube(titulo, descripcion, documentos)
+
+    resultado = {
         "id": nomenclatura,
         "titulo": titulo,
         "entidad": (release.get("buyer") or tender.get("procuringEntity") or {}).get("name", ""),
@@ -321,6 +432,7 @@ def convertir_record(record: dict) -> dict | None:
         "empresas_participantes": tender.get("numberOfTenderers") or len(tender.get("tenderers") or []),
         "descripcion": descripcion,
         "tdr_disponible": bool(documentos),
+        "documentos_bases": documentos_normalizados,
         "ocid": record.get("ocid") or release.get("ocid") or "",
         "fecha_cierre": _fecha_corta(period.get("endDate")),
         "fuente": "OECE-OCDS-OFICIAL",
@@ -331,6 +443,8 @@ def convertir_record(record: dict) -> dict | None:
         "_agregada_el": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "_sync_automatico": "SI",
     }
+    resultado.update(politica_nube)
+    return resultado
 
 
 def limite_8_uit(fecha_publicacion: str = "") -> float:
@@ -386,6 +500,11 @@ def convertir_a_proceso_menor(licitacion: dict) -> dict:
         "fuente": licitacion.get("fuente", "OECE-OCDS-OFICIAL"),
         "fuente_url": licitacion.get("fuente_url", ""),
         "score_ti": licitacion.get("score_ti", 0),
+        "documentos_bases": licitacion.get("documentos_bases", []),
+        "proveedor_nube_detectado": licitacion.get("proveedor_nube_detectado", "No identificado"),
+        "decision_comercial": licitacion.get("decision_comercial", "EVALUAR"),
+        "motivo_decision": licitacion.get("motivo_decision", ""),
+        "lectura_bases": licitacion.get("lectura_bases", ""),
         "_agregado_el": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "_sync_automatico": "SI",
     }
@@ -591,21 +710,68 @@ def guardar_local(nuevas: list[dict], ruta="licitaciones.json") -> int:
     return agregadas
 
 
-def enviar_email(nuevas: list[dict], dry_run=False):
-    if dry_run or not nuevas or not all([GMAIL_FROM, GMAIL_TO, GMAIL_APP_PASS]):
+def enviar_email(nuevas: list[dict], menores_nuevos=None, dry_run=False,
+                 destinatario: str | None = None, remitente: str | None = None,
+                 app_password: str | None = None):
+    """Notifica cada lote nuevo, incluyendo menores y el descarte comercial por GCP."""
+    menores_nuevos = menores_nuevos or []
+    oportunidades = []
+    for lic in nuevas:
+        oportunidades.append({
+            "tipo": "Licitación >8 UIT", "id": lic.get("id", ""), "entidad": lic.get("entidad", ""),
+            "titulo": lic.get("titulo", ""), "monto": lic.get("monto_base", 0),
+            "categoria": lic.get("subcategoria_ti", ""), "cierre": lic.get("fecha_cierre", ""),
+            "decision": lic.get("decision_comercial", "EVALUAR"),
+            "proveedor_nube": lic.get("proveedor_nube_detectado", "No identificado"),
+            "motivo": lic.get("motivo_decision", ""), "url": lic.get("fuente_url", ""),
+        })
+    for proc in menores_nuevos:
+        oportunidades.append({
+            "tipo": "Menor ≤8 UIT", "id": proc.get("id", ""), "entidad": proc.get("entidad", ""),
+            "titulo": proc.get("descripcion", ""), "monto": proc.get("montoReferencial", 0),
+            "categoria": proc.get("subcategoria", ""), "cierre": proc.get("finCotz", ""),
+            "decision": proc.get("decision_comercial", "EVALUAR"),
+            "proveedor_nube": proc.get("proveedor_nube_detectado", "No identificado"),
+            "motivo": proc.get("motivo_decision", ""), "url": proc.get("fuente_url", ""),
+        })
+    destinatario = destinatario or GMAIL_TO
+    remitente = remitente or GMAIL_FROM
+    app_password = app_password or GMAIL_APP_PASS
+    if dry_run or not oportunidades or not all([remitente, destinatario, app_password]):
         return
-    filas = "".join(
-        f"<tr><td>{lic['entidad']}</td><td>{lic['titulo']}</td><td>S/ {lic['monto_base']:,.0f}</td><td>{lic['subcategoria_ti']}</td></tr>"
-        for lic in nuevas[:30]
-    )
-    contenido = f"<h2>{len(nuevas)} oportunidades TI nuevas</h2><table>{filas}</table>"
+    filas = ""
+    for oportunidad in oportunidades[:100]:
+        color = "#b91c1c" if oportunidad["decision"] == "DESCARTAR" else "#b45309" if oportunidad["decision"] == "REVISAR BASES" else "#047857"
+        enlace = f'<a href="{html.escape(str(oportunidad["url"]))}">Abrir OECE</a>' if oportunidad["url"] else "—"
+        filas += (
+            f"<tr><td>{html.escape(oportunidad['tipo'])}</td><td>{html.escape(str(oportunidad['entidad']))}</td>"
+            f"<td><b>{html.escape(str(oportunidad['id']))}</b><br>{html.escape(str(oportunidad['titulo']))}</td>"
+            f"<td>S/ {float(oportunidad['monto'] or 0):,.0f}</td><td>{html.escape(str(oportunidad['cierre']))}</td>"
+            f"<td>{html.escape(str(oportunidad['proveedor_nube']))}</td>"
+            f"<td style='color:{color};font-weight:700'>{html.escape(oportunidad['decision'])}<br>"
+            f"<span style='font-weight:400'>{html.escape(str(oportunidad['motivo']))}</span></td><td>{enlace}</td></tr>"
+        )
+    descartadas = sum(1 for item in oportunidades if item["decision"] == "DESCARTAR")
+    contenido = f"""
+    <div style="font-family:Arial,sans-serif;max-width:1100px;margin:auto">
+      <h2 style="color:#534AB7">KAM Intelligence · {len(oportunidades)} procesos nuevos</h2>
+      <p><b>{len(menores_nuevos)}</b> menores de 8 UIT · <b>{len(nuevas)}</b> licitaciones ·
+         <b style="color:#b91c1c">{descartadas}</b> descartados por Google Cloud/GCP.</p>
+      <table style="border-collapse:collapse;width:100%" border="1" cellpadding="7">
+        <thead><tr><th>Tipo</th><th>Entidad</th><th>Proceso</th><th>Monto referencial</th><th>Cierre</th>
+        <th>Nube detectada</th><th>Decisión preliminar</th><th>Fuente</th></tr></thead>
+        <tbody>{filas}</tbody>
+      </table>
+      <p style="font-size:12px;color:#64748b">La decisión es preliminar y debe confirmarse con las bases integradas y el RNP.</p>
+    </div>"""
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"KAM Intelligence · {len(nuevas)} oportunidades TI OECE"
-    msg["From"], msg["To"] = GMAIL_FROM, GMAIL_TO
+    msg["Subject"] = f"KAM Intelligence · {len(oportunidades)} procesos nuevos · {descartadas} descartados GCP"
+    msg["From"], msg["To"] = remitente, destinatario
     msg.attach(MIMEText(contenido, "html", "utf-8"))
+    receptores = [correo.strip() for correo in destinatario.split(",") if correo.strip()]
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(GMAIL_FROM, GMAIL_APP_PASS)
-        server.sendmail(GMAIL_FROM, GMAIL_TO, msg.as_string())
+        server.login(remitente, app_password)
+        server.sendmail(remitente, receptores, msg.as_string())
 
 
 def enviar_alerta_eventos(eventos: list[dict], destinatario: str | None = None,
@@ -709,6 +875,8 @@ def main():
         menores_nuevos = deduplicar_por_id(
             [item for item in menores if item["id"] not in ids_local("procesos.json")]
         )
+        nuevas = [enriquecer_decision_con_bases(item) for item in nuevas]
+        menores_nuevos = [enriquecer_decision_con_bases(item) for item in menores_nuevos]
         if not args.dry_run:
             guardar_local(nuevas, "licitaciones.json")
             guardar_local(menores_nuevos, "procesos.json")
@@ -718,6 +886,8 @@ def main():
         ids_procesos = obtener_ids_existentes(sh, "procesos")
         nuevas = deduplicar_por_id([item for item in candidatas if item["id"] not in ids_licitaciones])
         menores_nuevos = deduplicar_por_id([item for item in menores if item["id"] not in ids_procesos])
+        nuevas = [enriquecer_decision_con_bases(item) for item in nuevas]
+        menores_nuevos = [enriquecer_decision_con_bases(item) for item in menores_nuevos]
         if not args.dry_run:
             guardar_en_sheets(sh, nuevas, "licitaciones")
             guardar_en_sheets(sh, menores_nuevos, "procesos")
@@ -725,7 +895,7 @@ def main():
     log.info("Nuevas sin duplicados: %d menores y %d licitaciones", len(menores_nuevos), len(nuevas))
     for lic in nuevas[:10]:
         log.info("%s | %s | %s | score %s", lic["id"], lic["entidad"], lic["subcategoria_ti"], lic["score_ti"])
-    enviar_email(nuevas, dry_run=args.dry_run)
+    enviar_email(nuevas, menores_nuevos, dry_run=args.dry_run)
     if not args.local:
         eventos = obtener_eventos_calendario_sheets(sh)
         log.info("Alertas de calendario detectadas: %d", len(eventos))

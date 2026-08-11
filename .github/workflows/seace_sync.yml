@@ -1,19 +1,8 @@
 name: SEACE Sync Diario — KAM Intelligence
 
 on:
-  # Ejecuta una prueba automática cuando cambia el sincronizador.
-  push:
-    branches: [main]
-    paths:
-      - 'seace_sync.py'
-      - '.github/workflows/seace_sync.yml'
-
-  # Corre cada día a las 7:00am y 12:00pm de Lima (UTC-5)
-  schedule:
-    - cron: '0 12 * * *'
-    - cron: '0 17 * * *'
-
-  # Permite ejecutarlo manualmente desde GitHub
+  # OECE bloquea actualmente las IP de GitHub Actions (HTTP 403).
+  # Se conserva solo para diagnóstico manual; la programación se ejecutará fuera de GitHub.
   workflow_dispatch:
     inputs:
       fecha:
@@ -49,7 +38,7 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install gspread google-auth
+          pip install gspread google-auth pypdf
 
       - name: Ejecutar sync SEACE
         env:
