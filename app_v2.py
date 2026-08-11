@@ -2141,18 +2141,43 @@ elif seccion == "📇 Directorio de Entidades":
     """, unsafe_allow_html=True)
 
     contactos_data = cargar_contactos()
-    if universo_inteligencia.empty:
-        st.info("Aún no hay entidades obtenidas de los procesos OECE.")
+    entidades_desde_contactos = sorted([k for k in contactos_data.keys() if str(k).strip()])
+    entidades_desde_procesos = []
+    resumen_entidades = pd.DataFrame()
+
+    if not universo_inteligencia.empty:
+        universo_dir = universo_inteligencia.copy()
+        universo_dir['entidad'] = universo_dir['entidad'].fillna('').astype(str).str.strip()
+        universo_dir = universo_dir[universo_dir['entidad'] != ''].copy()
+        if not universo_dir.empty:
+            resumen_entidades = universo_dir.groupby('entidad').agg(
+                procesos=('id', 'count'),
+                categorias=('categoria', 'nunique'),
+                monto_historico=('monto', 'sum'),
+                region=('region', lambda valores: next((str(v) for v in valores if str(v).strip() and str(v) != 'nan'), '')),
+            ).reset_index()
+            entidades_desde_procesos = resumen_entidades['entidad'].tolist()
+
+    entidades_totales = sorted(set(entidades_desde_contactos + entidades_desde_procesos))
+
+    if resumen_entidades.empty and entidades_totales:
+        resumen_entidades = pd.DataFrame({
+            'entidad': entidades_totales,
+            'procesos': [0] * len(entidades_totales),
+            'categorias': [0] * len(entidades_totales),
+            'monto_historico': [0] * len(entidades_totales),
+            'region': [''] * len(entidades_totales),
+        })
+
+    if resumen_entidades.empty:
+        st.info("Aún no hay entidades consolidadas desde los procesos. Si ya sincronizaste datos, revisa que lleguen con el campo `entidad`.")
     else:
-        resumen_entidades = universo_inteligencia.groupby('entidad').agg(
-            procesos=('id', 'count'),
-            categorias=('categoria', 'nunique'),
-            monto_historico=('monto', 'sum'),
-            region=('region', lambda valores: next((str(v) for v in valores if str(v).strip() and str(v) != 'nan'), '')),
-        ).reset_index()
-        resumen_entidades['contactos'] = resumen_entidades['entidad'].map(
-            lambda entidad: len(contactos_data.get(entidad, []))
-        )
+        if 'contactos' not in resumen_entidades.columns:
+            resumen_entidades['contactos'] = resumen_entidades['entidad'].map(
+                lambda entidad: len(contactos_data.get(entidad, []))
+            )
+        else:
+            resumen_entidades['contactos'] = resumen_entidades['contactos'].fillna(0)
         resumen_entidades = resumen_entidades.sort_values(['procesos', 'monto_historico'], ascending=False)
 
         c1, c2, c3, c4 = st.columns(4)
