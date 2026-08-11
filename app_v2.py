@@ -886,6 +886,13 @@ def guardar_renovacion_editada(proceso_id, fecha_inicio_real, plazo_meses, nota=
 ARCHIVO_CONTACTOS = 'crm_contactos.json'
 ARCHIVO_HISTORIAL = 'crm_historial.json'
 
+CONTACTOS_COLUMNAS = [
+    'cliente', 'nombre', 'cargo', 'area', 'email', 'telefono',
+    'fuente', 'url_fuente', 'fecha_verificacion', 'estado_verificacion',
+    'notas', 'agregado_el'
+]
+
+
 def cargar_contactos():
     if _gsheets_activo():
         try:
@@ -901,7 +908,12 @@ def cargar_contactos():
                     data[cliente] = []
                 data[cliente].append({
                     'nombre': r.get('nombre', ''), 'cargo': r.get('cargo', ''),
+                    'area': r.get('area', ''),
                     'email': r.get('email', ''), 'telefono': r.get('telefono', ''),
+                    'fuente': r.get('fuente', ''), 'url_fuente': r.get('url_fuente', ''),
+                    'fecha_verificacion': r.get('fecha_verificacion', ''),
+                    'estado_verificacion': r.get('estado_verificacion', 'Pendiente'),
+                    'notas': r.get('notas', ''),
                     'agregado_el': r.get('agregado_el', '')
                 })
             return data
@@ -913,48 +925,54 @@ def cargar_contactos():
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
 
-def guardar_contacto(cliente, nombre, cargo, email, telefono):
+def _guardar_contactos_completos(data):
+    """Persiste el directorio sin eliminar campos de procedencia y verificacion."""
+    if _gsheets_activo():
+        sh = _get_gsheets_client()
+        try:
+            ws = sh.worksheet('contactos')
+        except Exception:
+            ws = sh.add_worksheet(title='contactos', rows=2000, cols=len(CONTACTOS_COLUMNAS))
+        filas = [CONTACTOS_COLUMNAS]
+        for cliente, contactos in data.items():
+            for contacto in contactos:
+                registro = {'cliente': cliente, **contacto}
+                filas.append([registro.get(columna, '') for columna in CONTACTOS_COLUMNAS])
+        if ws.col_count < len(CONTACTOS_COLUMNAS):
+            ws.resize(cols=len(CONTACTOS_COLUMNAS))
+        ws.clear()
+        ws.update(filas, value_input_option='RAW')
+    with open(ARCHIVO_CONTACTOS, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def guardar_contacto(cliente, nombre, cargo, email, telefono, area='', fuente='',
+                     url_fuente='', fecha_verificacion='', estado_verificacion='Pendiente', notas=''):
     data = cargar_contactos()
     if cliente not in data:
         data[cliente] = []
     data[cliente].append({
-        'nombre': nombre, 'cargo': cargo, 'email': email, 'telefono': telefono,
+        'nombre': nombre, 'cargo': cargo, 'area': area, 'email': email, 'telefono': telefono,
+        'fuente': fuente, 'url_fuente': url_fuente,
+        'fecha_verificacion': fecha_verificacion,
+        'estado_verificacion': estado_verificacion, 'notas': notas,
         'agregado_el': datetime.now().strftime('%Y-%m-%d %H:%M')
     })
-    if _gsheets_activo():
-        try:
-            sh = _get_gsheets_client()
-            ws = sh.worksheet('contactos')
-            # Aplanar a filas para Sheets
-            filas = [['cliente', 'nombre', 'cargo', 'email', 'telefono', 'agregado_el']]
-            for c, contactos in data.items():
-                for ct in contactos:
-                    filas.append([c, ct.get('nombre',''), ct.get('cargo',''), ct.get('email',''), ct.get('telefono',''), ct.get('agregado_el','')])
-            ws.clear()
-            ws.update(filas, value_input_option='RAW')
-        except Exception:
-            pass
-    with open(ARCHIVO_CONTACTOS, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        _guardar_contactos_completos(data)
+    except Exception:
+        with open(ARCHIVO_CONTACTOS, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
 def eliminar_contacto(cliente, indice):
     data = cargar_contactos()
     if cliente in data and 0 <= indice < len(data[cliente]):
         data[cliente].pop(indice)
-        if _gsheets_activo():
-            try:
-                sh = _get_gsheets_client()
-                ws = sh.worksheet('contactos')
-                filas = [['cliente', 'nombre', 'cargo', 'email', 'telefono', 'agregado_el']]
-                for c, contactos in data.items():
-                    for ct in contactos:
-                        filas.append([c, ct.get('nombre',''), ct.get('cargo',''), ct.get('email',''), ct.get('telefono',''), ct.get('agregado_el','')])
-                ws.clear()
-                ws.update(filas, value_input_option='RAW')
-            except Exception:
-                pass
-        with open(ARCHIVO_CONTACTOS, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        try:
+            _guardar_contactos_completos(data)
+        except Exception:
+            with open(ARCHIVO_CONTACTOS, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
 
 def cargar_historial():
     if _gsheets_activo():
@@ -1706,6 +1724,7 @@ with st.sidebar:
             "🔎 Procesos OECE",
             "🆕 Últimos 7 días",
             "🧠 Inteligencia Comercial",
+            "📇 Directorio de Entidades",
             "📊 Dashboard",
             "🗄️ Base de Datos",
             "👥 CRM y Seguimiento",
@@ -1724,6 +1743,7 @@ with st.sidebar:
             "🔎 Procesos OECE",
             "🆕 Últimos 7 días",
             "🧠 Inteligencia Comercial",
+            "📇 Directorio de Entidades",
             "📊 Dashboard de Licitaciones",
             "🗄️ Base de Datos de Licitaciones",
             "👥 CRM y Seguimiento",
@@ -2111,6 +2131,121 @@ elif seccion == "🧠 Inteligencia Comercial":
                 st.dataframe(vista_part[['id', 'entidad', 'categoria', 'tipo_procedimiento', 'monto', 'recomendacion', 'motivo']],
                              use_container_width=True, hide_index=True,
                              column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+
+elif seccion == "📇 Directorio de Entidades":
+    st.markdown("""
+    <div style="margin-bottom:1rem;padding-bottom:0.75rem;border-bottom:0.5px solid var(--color-border-tertiary)">
+        <div style="font-size:15px;font-weight:500;color:var(--color-text-primary)">Directorio de Entidades Públicas</div>
+        <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px">Contactos institucionales de TI, OEC, logística y administración, con fuente y verificación</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    contactos_data = cargar_contactos()
+    if universo_inteligencia.empty:
+        st.info("Aún no hay entidades obtenidas de los procesos OECE.")
+    else:
+        resumen_entidades = universo_inteligencia.groupby('entidad').agg(
+            procesos=('id', 'count'),
+            categorias=('categoria', 'nunique'),
+            monto_historico=('monto', 'sum'),
+            region=('region', lambda valores: next((str(v) for v in valores if str(v).strip() and str(v) != 'nan'), '')),
+        ).reset_index()
+        resumen_entidades['contactos'] = resumen_entidades['entidad'].map(
+            lambda entidad: len(contactos_data.get(entidad, []))
+        )
+        resumen_entidades = resumen_entidades.sort_values(['procesos', 'monto_historico'], ascending=False)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Entidades mapeadas", len(resumen_entidades))
+        c2.metric("Con contactos", int((resumen_entidades['contactos'] > 0).sum()))
+        c3.metric("Contactos verificados", sum(
+            1 for lista in contactos_data.values() for contacto in lista
+            if contacto.get('estado_verificacion') == 'Verificado'
+        ))
+        c4.metric("Pendientes", int((resumen_entidades['contactos'] == 0).sum()))
+
+        buscar_entidad = st.text_input("Buscar entidad", placeholder="Nombre de ministerio, municipalidad, universidad…")
+        vista_entidades = resumen_entidades.copy()
+        if buscar_entidad:
+            vista_entidades = vista_entidades[
+                vista_entidades['entidad'].str.contains(re.escape(buscar_entidad), case=False, na=False)
+            ]
+        st.dataframe(
+            vista_entidades, use_container_width=True, hide_index=True,
+            column_config={
+                'entidad': 'Entidad', 'procesos': 'Procesos', 'categorias': 'Categorías',
+                'monto_historico': st.column_config.NumberColumn('Monto histórico', format='S/ %.0f'),
+                'region': 'Región', 'contactos': 'Contactos',
+            }
+        )
+
+        entidades_directorio = vista_entidades['entidad'].tolist() or resumen_entidades['entidad'].tolist()
+        entidad_dir = st.selectbox("Abrir ficha de entidad", entidades_directorio, key="directorio_entidad")
+        ficha = resumen_entidades[resumen_entidades['entidad'] == entidad_dir].iloc[0]
+        d1, d2, d3, d4 = st.columns(4)
+        d1.metric("Procesos", int(ficha['procesos']))
+        d2.metric("Categorías", int(ficha['categorias']))
+        d3.metric("Compras históricas", f"S/ {float(ficha['monto_historico'])/1e6:.2f} M")
+        d4.metric("Región", ficha['region'] or 'No identificada')
+
+        tab_contactos, tab_compras = st.tabs(["📞 Contactos", "🛒 Qué compra"])
+        with tab_contactos:
+            contactos_entidad = contactos_data.get(entidad_dir, [])
+            if contactos_entidad:
+                filas_contactos = pd.DataFrame(contactos_entidad)
+                columnas = ['nombre', 'cargo', 'area', 'email', 'telefono', 'estado_verificacion',
+                            'fecha_verificacion', 'fuente', 'url_fuente', 'notas']
+                for columna in columnas:
+                    if columna not in filas_contactos.columns:
+                        filas_contactos[columna] = ''
+                st.dataframe(
+                    filas_contactos[columnas], use_container_width=True, hide_index=True,
+                    column_config={'url_fuente': st.column_config.LinkColumn('Fuente oficial', display_text='Abrir')}
+                )
+            else:
+                st.info("Esta entidad aún no tiene contactos. Agrega solo información institucional o publicada oficialmente.")
+
+            with st.expander("➕ Agregar contacto institucional", expanded=not contactos_entidad):
+                a1, a2, a3 = st.columns(3)
+                nombre_dir = a1.text_input("Nombre", key="dir_nombre")
+                cargo_dir = a2.text_input("Cargo", key="dir_cargo")
+                area_dir = a3.selectbox("Área", ['TI / Informática', 'OEC / Contrataciones', 'Logística',
+                                                  'Administración', 'Mesa de partes', 'Otra'], key="dir_area")
+                b1, b2 = st.columns(2)
+                email_dir = b1.text_input("Correo institucional", key="dir_email")
+                telefono_dir = b2.text_input("Teléfono / anexo", key="dir_telefono")
+                fuente_dir = st.text_input("Nombre de la fuente", placeholder="Portal institucional, gob.pe, OECE…", key="dir_fuente")
+                url_dir = st.text_input("Enlace de la fuente oficial", key="dir_url")
+                c1, c2 = st.columns(2)
+                estado_dir = c1.selectbox("Estado", ['Pendiente', 'Verificado', 'Desactualizado'], key="dir_estado")
+                fecha_dir = c2.date_input("Fecha de verificación", value=datetime.now().date(), key="dir_fecha")
+                notas_dir = st.text_area("Notas", key="dir_notas")
+                if st.button("💾 Guardar en el directorio", type="primary", key="dir_guardar"):
+                    if not nombre_dir or not (email_dir or telefono_dir):
+                        st.warning("Ingresa el nombre y al menos un correo o teléfono institucional.")
+                    elif estado_dir == 'Verificado' and not url_dir:
+                        st.warning("Para marcarlo como verificado debes registrar el enlace de la fuente oficial.")
+                    else:
+                        guardar_contacto(
+                            entidad_dir, nombre_dir, cargo_dir, email_dir, telefono_dir,
+                            area=area_dir, fuente=fuente_dir, url_fuente=url_dir,
+                            fecha_verificacion=fecha_dir.isoformat(), estado_verificacion=estado_dir,
+                            notas=notas_dir,
+                        )
+                        st.success("Contacto guardado en el directorio.")
+                        st.rerun()
+
+        with tab_compras:
+            compras_entidad = universo_inteligencia[universo_inteligencia['entidad'] == entidad_dir]
+            categorias_dir = compras_entidad.groupby('categoria').agg(
+                procesos=('id', 'count'), monto=('monto', 'sum'),
+                ultima_compra=('fecha_publicacion_dt', 'max')
+            ).sort_values(['procesos', 'monto'], ascending=False).reset_index()
+            st.dataframe(
+                categorias_dir, use_container_width=True, hide_index=True,
+                column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f'),
+                               'ultima_compra': st.column_config.DateColumn('Último proceso')}
+            )
 
 elif "Menores" in tipo_proceso and seccion == "📊 Dashboard":
     st.markdown(f"""
