@@ -35,7 +35,13 @@ TERMINOS_BUSQUEDA = [
     "nube", "cloud", "correo electronico", "google workspace", "microsoft 365",
     "ciberseguridad", "firewall", "backup", "software", "hosting", "servidor",
     "almacenamiento", "base de datos", "videoconferencia", "inteligencia artificial",
-    "mesa de ayuda", "saas", "devops",
+    "mesa de ayuda", "saas", "devops", "switch", "router", "wifi", "access point",
+    "rack", "cableado estructurado", "fibra optica", "ups", "videovigilancia",
+    "sd-wan", "gpon", "pantalla interactiva", "pizarra interactiva",
+    "computadora", "laptop", "impresora", "escáner", "equipamiento informatico",
+    "licenciamiento", "seguridad informatica", "soporte tecnico", "data center",
+    "analitica de datos", "business intelligence", "transformacion digital",
+    "desarrollo de software", "digitalizacion", "firma digital", "telefonia ip",
 ]
 
 REGLAS_TI = {
@@ -49,8 +55,8 @@ REGLAS_TI = {
         1: ["cloud", "nube", "iac"],
     },
     "Seguridad Web": {
-        3: ["cloudflare", "firewall de aplicaciones", "waf", "ciberseguridad", "seguridad perimetral", "antiddos", "antispam"],
-        2: ["seguridad informatica", "seguridad de la informacion", "proteccion de correo", "endpoint", "firewall"],
+        3: ["cloudflare", "firewall de aplicaciones", "waf", "ciberseguridad", "seguridad perimetral", "antiddos", "antispam", "gestion unificada de amenazas"],
+        2: ["seguridad informatica", "seguridad de la informacion", "proteccion de correo", "endpoint", "firewall", "utm"],
         1: ["vpn", "antivirus", "zero trust"],
     },
     "Backup": {
@@ -63,8 +69,83 @@ REGLAS_TI = {
         1: ["software", "aplicacion web", "sistema web", "helpdesk", "erp", "crm"],
     },
     "Infraestructura": {
-        2: ["servidor", "almacenamiento", "storage", "base de datos", "datacenter", "centro de datos", "virtualizacion"],
-        1: ["infraestructura tecnologica", "conectividad", "fibra optica", "internet dedicado", "red lan", "red wan"],
+        3: ["gabinete de comunicaciones", "gabinete de datos", "rack de comunicaciones", "rack de servidores"],
+        2: ["servidor", "almacenamiento", "storage", "base de datos", "datacenter", "centro de datos", "virtualizacion", "gabinete rack"],
+        1: ["infraestructura tecnologica", "conectividad", "fibra optica", "internet dedicado", "red lan", "red wan", "rack"],
+    },
+    "Redes y Conectividad": {
+        3: ["switch core", "switch de distribucion", "router de borde", "controlador wifi", "balanceador de carga", "load balancer", "software defined wan"],
+        2: ["switch administrable", "switch de red", "router", "access point", "punto de acceso", "red inalambrica", "sd-wan"],
+        1: ["switch", "wifi", "wireless", "nms", "monitoreo de red"],
+    },
+    "Cableado Estructurado": {
+        3: ["cableado estructurado", "certificacion de cableado", "fusion de fibra optica"],
+        2: ["patch panel", "panel de parcheo", "organizador de cables", "cable de fibra optica"],
+        1: ["patch cord", "transceiver", "fibra optica"],
+    },
+    "Energía TI": {
+        3: ["sistema de alimentacion ininterrumpida", "unidad de distribucion de energia"],
+        2: ["ups para data center", "ups para centro de datos", "pdu para rack", "pdu inteligente"],
+        1: ["ups", "pdu"],
+    },
+    "Videovigilancia": {
+        3: ["sistema de videovigilancia", "sistema de video vigilancia", "circuito cerrado de television"],
+        2: ["videovigilancia", "video vigilancia", "camara ip", "cctv"],
+    },
+    "GPON": {
+        3: ["red gpon", "sistema gpon", "gigabit passive optical network"],
+        2: ["terminal de linea optica", "terminal de red optica", "olt", "ont", "onu", "splitter optico"],
+        1: ["gpon", "transceiver optico", "patch cord optico"],
+    },
+    "Pantallas Interactivas": {
+        3: ["pantalla interactiva", "pantallas interactivas", "panel interactivo", "paneles interactivos", "pizarra digital interactiva", "pizarras digitales interactivas", "monitor interactivo"],
+        2: ["pizarra interactiva", "pizarras interactivas", "display interactivo", "pantalla tactil educativa", "panel tactil"],
+        1: ["pantalla tactil", "pantallas tactiles", "smart board"],
+    },
+    "Cómputo y Periféricos": {
+        3: ["equipamiento informatico", "equipos de computo", "computadora de escritorio", "estacion de trabajo"],
+        2: ["computadora portatil", "laptop", "desktop", "workstation", "tablet", "monitor profesional"],
+        1: ["computadora", "monitor", "teclado", "mouse", "dock station", "periferico"],
+    },
+    "Impresión y Digitalización": {
+        3: ["servicio de impresion gestionada", "alquiler de impresoras", "digitalizacion de documentos", "gestion documental"],
+        2: ["impresora multifuncional", "equipo multifuncional", "escaner de documentos", "scanner de documentos"],
+        1: ["impresora", "escaner", "scanner", "plotter"],
+    },
+    "Datos y Analítica": {
+        3: ["business intelligence", "inteligencia de negocios", "data warehouse", "lago de datos", "gobierno de datos"],
+        2: ["analitica de datos", "plataforma de datos", "tablero de control", "power bi", "tableau"],
+        1: ["big data", "dashboard", "etl", "data lake"],
+    },
+    "Desarrollo y Transformación Digital": {
+        3: ["transformacion digital", "desarrollo de software", "fabrica de software", "automatizacion de procesos"],
+        2: ["desarrollo de sistema", "desarrollo de aplicativo", "modernizacion de aplicaciones", "servicios web"],
+        1: ["aplicacion movil", "portal web", "rpa", "low code", "no code"],
+    },
+    "Soporte y Servicios Gestionados": {
+        3: ["servicio gestionado de ti", "operacion de infraestructura tecnologica", "outsourcing de ti"],
+        2: ["soporte tecnico informatico", "mantenimiento de equipos de computo", "mesa de servicios", "service desk"],
+        1: ["soporte tecnico", "mantenimiento preventivo", "help desk", "itil"],
+    },
+    "Telecomunicaciones y Voz": {
+        3: ["telefonia ip", "central telefonica ip", "comunicaciones unificadas", "enlace de datos"],
+        2: ["internet dedicado", "enlace dedicado", "sip trunk", "contact center", "call center"],
+        1: ["voip", "anexo ip", "telefono ip", "mpls"],
+    },
+    "Identidad y Firma Digital": {
+        3: ["gestion de identidades", "firma digital", "certificado digital", "autenticacion multifactor"],
+        2: ["control de acceso logico", "directorio activo", "single sign on", "biometria"],
+        1: ["iam", "mfa", "sso", "token digital"],
+    },
+    "Audiovisual y Salas": {
+        3: ["sistema audiovisual", "sala de reuniones inteligente", "sala de videoconferencia"],
+        2: ["proyector multimedia", "muro de video", "video wall", "sistema de audio"],
+        1: ["proyector", "microfono", "parlante", "camara de conferencia"],
+    },
+    "Capacitación TI": {
+        3: ["capacitacion en tecnologias de informacion", "entrenamiento en ciberseguridad", "capacitacion cloud"],
+        2: ["curso de tecnologia", "certificacion tecnologica", "transferencia de conocimiento"],
+        1: ["capacitacion informatica", "taller tecnologico"],
     },
     "Videoconferencia": {
         3: ["videoconferencia", "video conferencia", "zoom", "google meet"],
@@ -414,6 +495,16 @@ def obtener_ids_existentes(sh, hoja=HOJA_LICITACIONES) -> set[str]:
     return {str(row.get("id", "")).strip() for row in sh.worksheet(hoja).get_all_records() if row.get("id")}
 
 
+def deduplicar_por_id(registros: list[dict]) -> list[dict]:
+    """Conserva un solo registro por ID también dentro del lote descargado."""
+    unicos = {}
+    for registro in registros:
+        identificador = str(registro.get("id", "")).strip()
+        if identificador and identificador not in unicos:
+            unicos[identificador] = registro
+    return list(unicos.values())
+
+
 def guardar_en_sheets(sh, nuevas: list[dict], hoja=HOJA_LICITACIONES):
     if not nuevas:
         return
@@ -605,8 +696,12 @@ def main():
                     return set(json.load(archivo))
             except (FileNotFoundError, json.JSONDecodeError):
                 return set()
-        nuevas = [item for item in candidatas if item["id"] not in ids_local("licitaciones.json")]
-        menores_nuevos = [item for item in menores if item["id"] not in ids_local("procesos.json")]
+        nuevas = deduplicar_por_id(
+            [item for item in candidatas if item["id"] not in ids_local("licitaciones.json")]
+        )
+        menores_nuevos = deduplicar_por_id(
+            [item for item in menores if item["id"] not in ids_local("procesos.json")]
+        )
         if not args.dry_run:
             guardar_local(nuevas, "licitaciones.json")
             guardar_local(menores_nuevos, "procesos.json")
@@ -614,8 +709,8 @@ def main():
         sh = conectar_sheets()
         ids_licitaciones = obtener_ids_existentes(sh, "licitaciones")
         ids_procesos = obtener_ids_existentes(sh, "procesos")
-        nuevas = [item for item in candidatas if item["id"] not in ids_licitaciones]
-        menores_nuevos = [item for item in menores if item["id"] not in ids_procesos]
+        nuevas = deduplicar_por_id([item for item in candidatas if item["id"] not in ids_licitaciones])
+        menores_nuevos = deduplicar_por_id([item for item in menores if item["id"] not in ids_procesos])
         if not args.dry_run:
             guardar_en_sheets(sh, nuevas, "licitaciones")
             guardar_en_sheets(sh, menores_nuevos, "procesos")
