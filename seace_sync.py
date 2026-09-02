@@ -202,6 +202,14 @@ def normalizar(texto) -> str:
     return " ".join("".join(c for c in texto if not unicodedata.combining(c)).lower().split())
 
 
+def _contiene_frase(texto: str, frase: str) -> bool:
+    """Busca términos completos para evitar falsos positivos por subcadenas (p. ej. ``ont`` en ``consultoría``)."""
+    termino = normalizar(frase)
+    if not termino:
+        return False
+    return re.search(rf"(?<!\w){re.escape(termino)}(?!\w)", texto) is not None
+
+
 def evaluar_relevancia(titulo: str, descripcion: str = "") -> tuple[int, str, list[str]]:
     texto = normalizar(f"{titulo} {descripcion}")
     if any(frase in texto for frase in EXCLUSIONES):
@@ -212,7 +220,7 @@ def evaluar_relevancia(titulo: str, descripcion: str = "") -> tuple[int, str, li
         puntos = 0
         coincidencias = []
         for peso, frases in reglas.items():
-            halladas = [frase for frase in frases if frase in texto]
+            halladas = [frase for frase in frases if _contiene_frase(texto, frase)]
             if halladas:
                 puntos += peso  # una suma por nivel evita inflar sinónimos repetidos
                 coincidencias.extend(halladas)
@@ -299,7 +307,7 @@ def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -
         f"{doc.get('title', '')} {doc.get('description', '')}" for doc in documentos if isinstance(doc, dict)
     )
     texto = normalizar(f"{titulo} {descripcion} {texto_documentos}")
-    workspace = any(frase in texto for frase in (
+    workspace = any(_contiene_frase(texto, frase) for frase in (
         "google workspace", "gmail empresarial", "correo google", "correo electronico google"
     ))
     proveedores = {
@@ -315,16 +323,19 @@ def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -
         "IBM Cloud": ("ibm cloud", "nube ibm"),
         "Nube privada/multinube": ("nube privada", "multinube", "multi cloud", "multicloud"),
     }
-    detectados = [nombre for nombre, frases in proveedores.items() if any(frase in texto for frase in frases)]
+    detectados = [nombre for nombre, frases in proveedores.items() if any(_contiene_frase(texto, frase) for frase in frases)]
     es_google_cloud = "Google Cloud (GCP)" in detectados
     # "Google Workspace" por sí solo pertenece a colaboración, no a infraestructura GCP.
-    if workspace and es_google_cloud and not any(frase in texto for frase in proveedores["Google Cloud (GCP)"][:-1]):
+    if workspace and es_google_cloud and not any(_contiene_frase(texto, frase) for frase in proveedores["Google Cloud (GCP)"][:-1]):
         es_google_cloud = False
         detectados = [p for p in detectados if p != "Google Cloud (GCP)"]
-    menciona_nube = any(frase in texto for frase in (
+    menciona_nube = any(_contiene_frase(texto, frase) for frase in (
         "nube", "cloud", "iaas", "paas", "infraestructura como servicio", "servicio de computo"
     )) or bool(detectados)
-    if es_google_cloud:
+    if not menciona_nube:
+        decision = "NO APLICA"
+        motivo = "Este proceso no corresponde a nube, cloud ni servicios equivalentes; la política de GCP no aplica."
+    elif es_google_cloud:
         decision = "DESCARTAR"
         motivo = "La documentación disponible identifica infraestructura Google Cloud/GCP, excluida por política comercial Qubits."
     elif detectados:
@@ -340,7 +351,9 @@ def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -
         "proveedor_nube_detectado": ", ".join(detectados) if detectados else ("Google Workspace" if workspace else "No identificado"),
         "decision_comercial": decision,
         "motivo_decision": motivo,
-        "lectura_bases": "Metadatos OCDS revisados" if documentos else "Sin bases accesibles en OCDS; revisión pendiente",
+        "lectura_bases": (
+            "Metadatos OCDS revisados" if documentos else "Sin bases accesibles en OCDS; revisión pendiente"
+        ) if menciona_nube else "No aplica: proceso no relacionado con nube/cloud",
     }
 
 
@@ -350,7 +363,7 @@ def enriquecer_decision_con_bases(oportunidad: dict, max_mb: int = 25, max_pagin
         f"{oportunidad.get('titulo', '')} {oportunidad.get('descripcion', '')} "
         f"{oportunidad.get('subcategoria_ti', oportunidad.get('subcategoria', ''))}"
     )
-    if not any(frase in texto_inicial for frase in ("nube", "cloud", "iaas", "paas")):
+    if not any(_contiene_frase(texto_inicial, frase) for frase in ("nube", "cloud", "iaas", "paas")):
         return oportunidad
     documentos = oportunidad.get("documentos_bases") or []
     if isinstance(documentos, str):
