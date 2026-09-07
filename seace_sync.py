@@ -187,8 +187,11 @@ REGLAS_TI = {
 }
 
 EXCLUSIONES = [
-    "correo y mensajeria a nivel nacional", "servicio de mensajeria local",
-    "servicio de mensajeria nacional", "mensajeria fisica", "servicio courier",
+    # Excluir únicamente logística y mensajería física; correo electrónico,
+    # colaboración y mensajería digital sí son oportunidades comerciales.
+    "correo fisico y mensajeria nacional", "servicio de mensajeria fisica local",
+    "servicio de mensajeria fisica nacional", "mensajeria fisica", "servicio courier", "courier",
+    "servicio postal", "distribucion fisica de documentos",
     "reparacion de analizador", "analizador de presion", "equipo medico",
     "transporte de carga", "servicio de alimentacion", "obra de construccion",
 ]
@@ -330,7 +333,9 @@ def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -
         es_google_cloud = False
         detectados = [p for p in detectados if p != "Google Cloud (GCP)"]
     menciona_nube = any(_contiene_frase(texto, frase) for frase in (
-        "nube", "cloud", "iaas", "paas", "infraestructura como servicio", "servicio de computo"
+        "nube", "cloud", "iaas", "paas", "infraestructura como servicio", "servicio de computo",
+        "google workspace", "microsoft 365", "office 365", "exchange online",
+        "correo electronico en la nube", "mensajeria electronica",
     )) or bool(detectados)
     if not menciona_nube:
         decision = "NO APLICA"
@@ -363,7 +368,10 @@ def enriquecer_decision_con_bases(oportunidad: dict, max_mb: int = 25, max_pagin
         f"{oportunidad.get('titulo', '')} {oportunidad.get('descripcion', '')} "
         f"{oportunidad.get('subcategoria_ti', oportunidad.get('subcategoria', ''))}"
     )
-    if not any(_contiene_frase(texto_inicial, frase) for frase in ("nube", "cloud", "iaas", "paas")):
+    if not any(_contiene_frase(texto_inicial, frase) for frase in (
+        "nube", "cloud", "iaas", "paas", "google workspace", "microsoft 365",
+        "office 365", "exchange online", "correo electronico en la nube", "mensajeria electronica"
+    )):
         return oportunidad
     documentos = oportunidad.get("documentos_bases") or []
     if isinstance(documentos, str):
