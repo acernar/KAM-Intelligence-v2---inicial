@@ -792,6 +792,77 @@ def guardar_en_sheets(sh, nuevas: list[dict], hoja=HOJA_LICITACIONES):
     ws.append_rows(filas, value_input_option="RAW")
 
 
+CLASIFICACION_HISTORICA_CAMPOS = [
+    "categoria_oficial", "codigo_clasificacion", "esquema_clasificacion",
+    "clasificaciones_oficiales", "descripcion_item_oficial", "categoria_kam",
+    "subcategoria_kam", "evidencia_clasificacion", "confianza_clasificacion",
+    "requiere_revision",
+]
+
+
+def releer_clasificacion_historica_sheets(sh, hoja: str, limite: int = 200) -> int:
+    """Completa clasificación OCDS de filas existentes sin alterar sus demás datos."""
+    from gspread.utils import rowcol_to_a1
+
+    ws = sh.worksheet(hoja)
+    registros = ws.get_all_records()
+    columnas = list(ws.row_values(1))
+    nuevas_columnas = [campo for campo in CLASIFICACION_HISTORICA_CAMPOS if campo not in columnas]
+    if nuevas_columnas:
+        columnas.extend(nuevas_columnas)
+        ws.update(values=[columnas], range_name=f"A1:{rowcol_to_a1(1, len(columnas))}", value_input_option="RAW")
+
+    objetivos = []
+    for numero_fila, fila in enumerate(registros, start=2):
+        ocid = str(fila.get("ocid") or "").strip()
+        if not ocid:
+            continue
+        if fila.get("codigo_clasificacion") and fila.get("confianza_clasificacion"):
+            continue
+        objetivos.append((numero_fila, fila, ocid))
+        if len(objetivos) >= limite:
+            break
+    if not objetivos:
+        log.info("%s: no quedan filas pendientes de clasificación OCDS", hoja)
+        return 0
+
+    def procesar(objetivo):
+        numero_fila, fila, ocid = objetivo
+        url = fila.get("api_url") or f"{API_BASE}/record/{urllib.parse.quote(ocid, safe='')}"
+        record = _get_json(url)
+        release = record.get("compiledRelease") or {}
+        tender = release.get("tender") or {}
+        titulo = tender.get("description") or tender.get("title") or fila.get("titulo") or fila.get("descripcion") or ""
+        descripcion = tender.get("description") or fila.get("descripcion") or ""
+        _, subcategoria, coincidencias = evaluar_relevancia(titulo, descripcion)
+        subcategoria = fila.get("subcategoria_kam") or fila.get("subcategoria_ti") or fila.get("subcategoria") or subcategoria
+        return numero_fila, extraer_clasificacion_oficial(tender, subcategoria, coincidencias)
+
+    resultados = []
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futuros = [executor.submit(procesar, objetivo) for objetivo in objetivos]
+        for futuro in as_completed(futuros):
+            try:
+                resultados.append(futuro.result())
+            except Exception as exc:
+                log.warning("No se pudo releer una ficha histórica en %s: %s", hoja, exc)
+
+    cambios = []
+    for numero_fila, datos in resultados:
+        for campo in CLASIFICACION_HISTORICA_CAMPOS:
+            valor = datos.get(campo, "")
+            if isinstance(valor, (list, dict)):
+                valor = json.dumps(valor, ensure_ascii=False)
+            cambios.append({
+                "range": rowcol_to_a1(numero_fila, columnas.index(campo) + 1),
+                "values": [[str(valor) if valor is not None else ""]],
+            })
+    if cambios:
+        ws.batch_update(cambios, value_input_option="RAW")
+    log.info("%s: clasificación OCDS completada en %d/%d filas", hoja, len(resultados), len(objetivos))
+    return len(resultados)
+
+
 def enriquecer_existentes_sheets(sh, hoja: str, enriquecidos: list[dict]) -> int:
     """Completa solo celdas OCDS de filas existentes, sin reescribir la hoja."""
     if not enriquecidos:
@@ -1008,9 +1079,21 @@ def main():
     parser.add_argument("--fecha", type=str, default=None)
     parser.add_argument("--dias", type=int, default=7)
     parser.add_argument("--max-paginas", type=int, default=2)
+    parser.add_argument("--releer-historico", action="store_true",
+                        help="Completa clasificación oficial OCDS de filas existentes en Google Sheets")
+    parser.add_argument("--max-registros-historico", type=int, default=200)
     parser.add_argument("--sin-alertas-calendario", action="store_true",
                         help="No envía el resumen de calendario; útil para sincronizaciones frecuentes")
     args = parser.parse_args()
+    if args.releer_historico:
+        sh = conectar_sheets()
+        total_releidos = 0
+        for hoja in ("licitaciones", "procesos"):
+            total_releidos += releer_clasificacion_historica_sheets(
+                sh, hoja, limite=max(1, args.max_registros_historico)
+            )
+        log.info("Relectura histórica finalizada: %d filas actualizadas", total_releidos)
+        return
     hasta = datetime.strptime(args.fecha, "%Y-%m-%d").date() if args.fecha else date.today()
     desde = hasta - timedelta(days=args.dias)
     log.info("Buscando oportunidades TI oficiales: %s a %s", desde, hasta)
