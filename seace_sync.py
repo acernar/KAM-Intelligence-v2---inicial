@@ -27,7 +27,6 @@ HOJA_LICITACIONES = "licitaciones"
 HOJA_SYNC_LOG = "sync_log"
 UIT_POR_ANIO = {2025: 5350, 2026: 5500}
 
-
 def _cargar_env_local(ruta=".env"):
     """Carga secretos locales ignorados por Git, sin reemplazar variables ya definidas."""
     if not os.path.exists(ruta):
@@ -201,7 +200,6 @@ TERMINOS_EXCLUIR = EXCLUSIONES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
-
 
 def normalizar(texto) -> str:
     texto = unicodedata.normalize("NFKD", str(texto or ""))
