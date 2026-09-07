@@ -29,6 +29,8 @@ UIT_POR_ANIO = {2025: 5350, 2026: 5500}
 
 def _cargar_env_local(ruta=".env"):
     """Carga secretos locales ignorados por Git, sin reemplazar variables ya definidas."""
+    if not os.path.isabs(ruta):
+        ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), ruta)
     if not os.path.exists(ruta):
         return
     with open(ruta, encoding="utf-8") as archivo:
@@ -279,7 +281,7 @@ def _get_json(url: str, params=None, max_intentos: int = 4) -> dict:
             espera = min(20, 2 ** intento)
             log.warning("OECE HTTP %s; reintento %d/%d en %ss", exc.code, intento, max_intentos, espera)
             time.sleep(espera)
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
             ultimo_error = exc
             if intento == max_intentos:
                 raise RuntimeError(f"OECE no respondió después de {intento} intentos") from exc

@@ -28,6 +28,26 @@ from zoneinfo import ZoneInfo
 GSHEETS_SPREADSHEET_ID = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
 
 
+def _cargar_env_local():
+    """Carga el .env del proyecto cuando se ejecuta Streamlit localmente."""
+    ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')
+    if not os.path.exists(ruta):
+        return
+    try:
+        with open(ruta, encoding='utf-8') as archivo:
+            for linea in archivo:
+                linea = linea.strip()
+                if not linea or linea.startswith('#') or '=' not in linea:
+                    continue
+                clave, valor = linea.split('=', 1)
+                os.environ.setdefault(clave.strip(), valor.strip().strip('"').strip("'"))
+    except OSError:
+        return
+
+
+_cargar_env_local()
+
+
 def _url_ficha_oece(ocid, fallback=""):
     """Devuelve la ficha pública legible; evita exponer el JSON técnico de la API."""
     ocid = str(ocid or '').strip()
