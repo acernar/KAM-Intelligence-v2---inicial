@@ -788,7 +788,14 @@ def enviar_email(nuevas: list[dict], menores_nuevos=None, dry_run=False,
     destinatario = destinatario or GMAIL_TO
     remitente = remitente or GMAIL_FROM
     app_password = app_password or GMAIL_APP_PASS
-    if dry_run or not oportunidades or not all([remitente, destinatario, app_password]):
+    if dry_run:
+        log.info("Correo de oportunidades omitido: ejecución dry-run")
+        return
+    if not oportunidades:
+        log.info("Correo de oportunidades omitido: no hay procesos nuevos")
+        return
+    if not all([remitente, destinatario, app_password]):
+        log.warning("Correo de oportunidades omitido: faltan variables GMAIL_FROM, GMAIL_TO o GMAIL_APP_PASS")
         return
     filas = ""
     for oportunidad in oportunidades[:100]:
@@ -823,6 +830,7 @@ def enviar_email(nuevas: list[dict], menores_nuevos=None, dry_run=False,
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(remitente, app_password)
         server.sendmail(remitente, receptores, msg.as_string())
+    log.info("Correo de oportunidades enviado a %d destinatarios (%d procesos)", len(receptores), len(oportunidades))
 
 
 def enviar_alerta_eventos(eventos: list[dict], destinatario: str | None = None,
@@ -832,7 +840,14 @@ def enviar_alerta_eventos(eventos: list[dict], destinatario: str | None = None,
     destinatario = destinatario or GMAIL_TO
     remitente = remitente or GMAIL_FROM
     app_password = app_password or GMAIL_APP_PASS
-    if dry_run or not eventos or not all([destinatario, remitente, app_password]):
+    if dry_run:
+        log.info("Correo de calendario omitido: ejecución dry-run")
+        return False
+    if not eventos:
+        log.info("Correo de calendario omitido: no hay eventos")
+        return False
+    if not all([destinatario, remitente, app_password]):
+        log.warning("Correo de calendario omitido: faltan variables GMAIL_FROM, GMAIL_TO o GMAIL_APP_PASS")
         return False
     eventos = sorted(eventos, key=lambda item: (item.get("fecha", ""), item.get("entidad", "")))
     filas = ""
@@ -864,6 +879,7 @@ def enviar_alerta_eventos(eventos: list[dict], destinatario: str | None = None,
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(remitente, app_password)
         server.sendmail(remitente, receptores, msg.as_string())
+    log.info("Correo de calendario enviado a %d destinatarios (%d eventos)", len(receptores), len(eventos))
     return True
 
 
