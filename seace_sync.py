@@ -27,6 +27,28 @@ HOJA_LICITACIONES = "licitaciones"
 HOJA_SYNC_LOG = "sync_log"
 UIT_POR_ANIO = {2025: 5350, 2026: 5500}
 
+# Términos que DESCARTAN un proceso automáticamente
+TERMINOS_EXCLUIR = [
+    "ejecucion de obra","elaboracion de expediente tecnico","supervision de obra",
+    "construccion de","mejoramiento de infraestructura vial","pavimentacion",
+    "asfaltado","pista atletica","grass deportivo","estadio","losa deportiva",
+    "campo deportivo","parque","plaza","vereda","puente","carretera",
+    "camino vecinal","trocha carrozable","canal de riego","sistema de riego",
+    "agua potable","alcantarillado","saneamiento","residuos solidos",
+    "relleno sanitario","planta de tratamiento","construccion de colegio",
+    "construccion de escuela","construccion de hospital","construccion de posta",
+    "mejoramiento de infraestructura educativa","mejoramiento de infraestructura fisica",
+    "semovientes","ganado","vaquillona","ovino","alpaca","camelido",
+    "maquinaria agricola","tractor","cosechadora","semilla","fertilizante",
+    "tuberia","geomembrana","acero","cemento","ladrillo","madera",
+    "ambulancia","camion","volquete","retroexcavadora",
+    "servicio de limpieza","servicio de seguridad fisica","vigilancia fisica",
+    "servicio de alimentacion","catering","lavanderia",
+    "mantenimiento de jardines","podado","fumigacion",
+    "transporte de personal","courier",
+]
+
+
 
 def _cargar_env_local(ruta=".env"):
     """Carga secretos locales ignorados por Git, sin reemplazar variables ya definidas."""
@@ -196,6 +218,12 @@ EXCLUSIONES = [
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
+
+
+def _es_excluido(titulo: str) -> bool:
+    """Descarta obras civiles, ganadería y otros procesos no-TI."""
+    t = _norm(titulo)
+    return any(_norm(ex) in t for ex in TERMINOS_EXCLUIR)
 
 def normalizar(texto) -> str:
     texto = unicodedata.normalize("NFKD", str(texto or ""))
