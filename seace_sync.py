@@ -168,9 +168,9 @@ REGLAS_TI = {
         1: ["capacitacion informatica", "taller tecnologico"],
     },
     "Expedientes Técnicos y Supervisión": {
-        3: ["elaboracion de expediente tecnico", "supervision de elaboracion de expediente tecnico", "consultoria para expediente tecnico"],
-        2: ["revision de expediente tecnico", "evaluacion de expediente tecnico", "actualizacion de expediente tecnico", "supervision de expediente tecnico"],
-        1: ["expediente tecnico", "supervision de estudio definitivo"],
+        3: ["elaboracion de expediente tecnico", "elaboracion del expediente tecnico", "supervision de elaboracion de expediente tecnico", "supervision de la elaboracion del expediente tecnico", "consultoria para expediente tecnico", "consultoria para la elaboracion del expediente tecnico", "expediente de saldo de obra"],
+        2: ["revision de expediente tecnico", "evaluacion de expediente tecnico", "actualizacion de expediente tecnico", "supervision de expediente tecnico", "saldo de obra"],
+        1: ["expediente tecnico"],
     },
     "Videoconferencia": {
         3: ["videoconferencia", "video conferencia", "zoom", "google meet"],
@@ -195,6 +195,9 @@ EXCLUSIONES = [
     "reparacion de analizador", "analizador de presion", "equipo medico",
     "transporte de carga", "servicio de alimentacion", "obra de construccion",
 ]
+# Alias legible para integraciones y pruebas que referencien esta lista por su
+# nombre funcional. Se mantiene una sola fuente de verdad.
+TERMINOS_EXCLUIR = EXCLUSIONES
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
@@ -207,15 +210,21 @@ def normalizar(texto) -> str:
 
 def _contiene_frase(texto: str, frase: str) -> bool:
     """Busca términos completos para evitar falsos positivos por subcadenas (p. ej. ``ont`` en ``consultoría``)."""
+    texto = normalizar(texto)
     termino = normalizar(frase)
     if not termino:
         return False
     return re.search(rf"(?<!\w){re.escape(termino)}(?!\w)", texto) is not None
 
 
+def _es_excluido(texto: str) -> bool:
+    """Indica si el texto contiene una exclusión comercial como término completo."""
+    return any(_contiene_frase(texto, termino) for termino in TERMINOS_EXCLUIR)
+
+
 def evaluar_relevancia(titulo: str, descripcion: str = "") -> tuple[int, str, list[str]]:
     texto = normalizar(f"{titulo} {descripcion}")
-    if any(frase in texto for frase in EXCLUSIONES):
+    if _es_excluido(texto):
         return 0, "No TI", ["exclusión comercial"]
     puntos_por_categoria = {}
     coincidencias_por_categoria = {}
