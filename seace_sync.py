@@ -200,6 +200,19 @@ EXCLUSIONES = [
 # nombre funcional. Se mantiene una sola fuente de verdad.
 TERMINOS_EXCLUIR = EXCLUSIONES
 
+FAMILIAS_KAM = {
+    "Cloud y Colaboración": {"Nube", "Correo/Colaboración", "Backup"},
+    "Ciberseguridad": {"Seguridad Web", "Identidad y Firma Digital"},
+    "Infraestructura y Redes": {
+        "Infraestructura", "Redes y Conectividad", "Cableado Estructurado", "Energía TI",
+        "GPON", "Telecomunicaciones y Voz",
+    },
+    "Seguridad Física y Audiovisual": {"Videovigilancia", "Audiovisual y Salas", "Videoconferencia"},
+    "Software y Datos": {"Software", "Datos y Analítica", "Desarrollo y Transformación Digital", "DevOps", "IA"},
+    "Equipamiento y Digitalización": {"Pantallas Interactivas", "Cómputo y Periféricos", "Impresión y Digitalización"},
+    "Servicios Profesionales TI": {"Soporte y Servicios Gestionados", "Capacitación TI", "Expedientes Técnicos y Supervisión"},
+}
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
@@ -220,6 +233,14 @@ def _contiene_frase(texto: str, frase: str) -> bool:
 def _es_excluido(texto: str) -> bool:
     """Indica si el texto contiene una exclusión comercial como término completo."""
     return any(_contiene_frase(texto, termino) for termino in TERMINOS_EXCLUIR)
+
+
+def familia_kam(subcategoria: str) -> str:
+    """Devuelve la familia comercial superior de una subcategoría KAM."""
+    for familia, subcategorias in FAMILIAS_KAM.items():
+        if subcategoria in subcategorias:
+            return familia
+    return "Otros TI"
 
 
 def evaluar_relevancia(titulo: str, descripcion: str = "") -> tuple[int, str, list[str]]:
@@ -310,6 +331,59 @@ def _estado_licitacion(release: dict) -> str:
     if cierre and cierre >= date.today().isoformat():
         return "Abierto para participar"
     return "Publicado"
+
+
+def extraer_clasificacion_oficial(tender: dict, subcategoria_kam: str, coincidencias: list[str]) -> dict:
+    """Extrae clasificación OCDS y la separa de la taxonomía comercial KAM."""
+    items = tender.get("items") or []
+    clasificaciones = []
+    descripciones = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        descripcion = str(item.get("description") or "").strip()
+        if descripcion:
+            descripciones.append(descripcion)
+        candidates = []
+        if isinstance(item.get("classification"), dict):
+            candidates.append(item["classification"])
+        candidates.extend(item.get("additionalClassifications") or [])
+        for clasificacion in candidates:
+            if not isinstance(clasificacion, dict):
+                continue
+            registro = {
+                "scheme": str(clasificacion.get("scheme") or ""),
+                "id": str(clasificacion.get("id") or ""),
+                "description": str(clasificacion.get("description") or ""),
+                "uri": str(clasificacion.get("uri") or ""),
+            }
+            if any(registro.values()) and registro not in clasificaciones:
+                clasificaciones.append(registro)
+
+    principal = clasificaciones[0] if clasificaciones else {}
+    codigo = principal.get("id", "")
+    esquema = principal.get("scheme", "")
+    categoria_oficial = {
+        "goods": "Bien", "services": "Servicio", "works": "Obra"
+    }.get(tender.get("mainProcurementCategory"), "")
+    if codigo and descripciones:
+        confianza = "CONFIRMADA"
+    elif codigo or descripciones:
+        confianza = "PROBABLE"
+    else:
+        confianza = "REVISAR"
+    return {
+        "categoria_oficial": categoria_oficial,
+        "codigo_clasificacion": codigo,
+        "esquema_clasificacion": esquema,
+        "clasificaciones_oficiales": clasificaciones,
+        "descripcion_item_oficial": " | ".join(descripciones[:10]),
+        "categoria_kam": familia_kam(subcategoria_kam),
+        "subcategoria_kam": subcategoria_kam,
+        "evidencia_clasificacion": ", ".join(coincidencias[:20]),
+        "confianza_clasificacion": confianza,
+        "requiere_revision": "NO" if confianza == "CONFIRMADA" else "SI",
+    }
 
 
 def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -> dict:
@@ -457,6 +531,7 @@ def convertir_record(record: dict) -> dict | None:
         "formato": doc.get("format", ""), "fecha": _fecha_corta(doc.get("datePublished") or doc.get("dateModified")),
     } for doc in documentos if isinstance(doc, dict)]
     politica_nube = evaluar_politica_nube(titulo, descripcion, documentos)
+    clasificacion_oficial = extraer_clasificacion_oficial(tender, subcategoria, coincidencias)
 
     resultado = {
         "id": nomenclatura,
@@ -492,6 +567,7 @@ def convertir_record(record: dict) -> dict | None:
         "_sync_automatico": "SI",
     }
     resultado.update(politica_nube)
+    resultado.update(clasificacion_oficial)
     return resultado
 
 
@@ -548,6 +624,16 @@ def convertir_a_proceso_menor(licitacion: dict) -> dict:
         "fuente": licitacion.get("fuente", "OECE-OCDS-OFICIAL"),
         "fuente_url": licitacion.get("fuente_url", ""),
         "score_ti": licitacion.get("score_ti", 0),
+        "categoria_oficial": licitacion.get("categoria_oficial", ""),
+        "codigo_clasificacion": licitacion.get("codigo_clasificacion", ""),
+        "esquema_clasificacion": licitacion.get("esquema_clasificacion", ""),
+        "clasificaciones_oficiales": licitacion.get("clasificaciones_oficiales", []),
+        "descripcion_item_oficial": licitacion.get("descripcion_item_oficial", ""),
+        "categoria_kam": licitacion.get("categoria_kam", familia_kam(licitacion.get("subcategoria_ti", ""))),
+        "subcategoria_kam": licitacion.get("subcategoria_kam", licitacion.get("subcategoria_ti", "")),
+        "evidencia_clasificacion": licitacion.get("evidencia_clasificacion", ""),
+        "confianza_clasificacion": licitacion.get("confianza_clasificacion", "REVISAR"),
+        "requiere_revision": licitacion.get("requiere_revision", "SI"),
         "documentos_bases": licitacion.get("documentos_bases", []),
         "proveedor_nube_detectado": licitacion.get("proveedor_nube_detectado", "No identificado"),
         "decision_comercial": licitacion.get("decision_comercial", "EVALUAR"),
