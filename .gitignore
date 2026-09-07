@@ -3,5 +3,7 @@ licitaciones.json
 procesos.json
 __pycache__/
 .env
+.venv/
 *.pyc
 gsheets_credentials.json
+.DS_Store

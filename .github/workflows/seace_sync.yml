@@ -1,11 +1,8 @@
 name: SEACE Sync Diario — KAM Intelligence
 
 on:
-  # Corre cada día a 12:00 UTC = 7:00am Lima (UTC-5)
-  schedule:
-    - cron: '0 12 * * *'
-
-  # Permite ejecutarlo manualmente desde GitHub
+  # OECE bloquea actualmente las IP de GitHub Actions (HTTP 403).
+  # Se conserva solo para diagnóstico manual; la programación se ejecutará fuera de GitHub.
   workflow_dispatch:
     inputs:
       fecha:
@@ -27,7 +24,7 @@ jobs:
   sync:
     name: Sincronizar licitaciones TI desde SEACE
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout código
@@ -41,7 +38,7 @@ jobs:
 
       - name: Instalar dependencias
         run: |
-          pip install requests gspread google-auth beautifulsoup4
+          pip install gspread google-auth pypdf
 
       - name: Ejecutar sync SEACE
         env:

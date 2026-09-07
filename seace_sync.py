@@ -197,12 +197,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger(__name__)
 
 
-
-def es_excluido(titulo):
-    """Retorna True si el proceso debe descartarse por ser obra u otro no-TI."""
-    texto = normalizar(titulo)
-    return any(normalizar(t) in texto for t in TERMINOS_EXCLUIR)
-
 def normalizar(texto) -> str:
     texto = unicodedata.normalize("NFKD", str(texto or ""))
     return " ".join("".join(c for c in texto if not unicodedata.combining(c)).lower().split())
