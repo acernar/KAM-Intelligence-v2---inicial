@@ -83,29 +83,35 @@ GMAIL_APP_PASS = os.environ.get("GMAIL_APP_PASS", "")
 
 # Una consulta por grupo reduce llamadas; el filtro de puntuación decide la relevancia final.
 TERMINOS_BUSQUEDA = [
-    # Nube, Infraestructura y Servidores
-    "nube", "cloud", "saas", "iaas", "paas", "hosting", "servidor", "servidores",
-    "data center", "centro de datos", "sala de servidores", "virtualizacion",
-    "almacenamiento", "storage", "almacenamiento san", "almacenamiento nas", "backup",
-    # Correo, Colaboración y Telefonía
+    # Nube, Infraestructura y Servidores (Huawei, Vertiv, APC)
+    "nube", "cloud", "saas", "iaas", "paas", "hosting", "alojamiento web", "servidor", "servidores",
+    "data center", "centro de datos", "sala de servidores", "virtualizacion", "vmware", "vsphere",
+    "almacenamiento", "storage", "almacenamiento san", "almacenamiento nas", "backup", "respaldo",
+    "veeam", "veeam backup", "veritas", "acronis", "disaster recovery",
+    "huawei", "oceanstor", "cloudengine", "vertiv", "liebert", "apc", "rack", "ups", "pdu",
+    # Correo, Colaboración, Telefonía y VoIP
     "correo electronico", "google workspace", "microsoft 365", "office 365",
     "central telefonica", "colaboracion", "comunicaciones unificadas", "contact center",
-    "telefonia ip", "telefonia", "voip", "videoconferencia",
-    # Ciberseguridad, Redes y Comunicaciones
+    "telefonia ip", "telefonia", "voip", "sip trunk", "troncal sip", "anexos virtuales",
+    "videoconferencia", "zoom", "teams",
+    # Ciberseguridad, Redes y Comunicaciones (LOL & NEXUS)
     "ciberseguridad", "seguridad informatica", "seguridad perimetral", "firewall",
-    "antivirus", "edr", "waf", "soc", "siem", "fortinet", "palo alto", "cisco",
+    "fortinet", "fortigate", "palo alto", "check point", "sophos", "trend micro",
+    "cisco", "meraki", "aruba", "mikrotik", "ubiquiti", "unifi", "ruijie", "cambium",
     "switch", "switches", "router", "routers", "wifi", "access point",
     "enlace de datos", "internet dedicado", "enlace de internet", "red lan", "red wan",
-    "sd-wan", "gpon", "cableado estructurado", "fibra optica", "rack", "ups",
-    # Software, Licenciamiento y Desarrollo
+    "sd-wan", "gpon", "cableado estructurado", "furukawa", "panduit", "fibra optica",
+    "antivirus", "edr", "xdr", "waf", "soc", "siem", "vulnerabilidades", "pentesting", "certificado ssl",
+    # Software, Licenciamiento y Trámite Documentario
     "software", "licenciamiento", "licencias", "renovacion de licencias",
-    "suscripcion", "suscripcion en la nube", "desarrollo de software", "fabrica de software",
+    "suscripcion", "suscripcion en la nube", "red hat", "rhel", "openshift", "desarrollo de software", "fabrica de software",
     "sistema de informacion", "sistema web", "aplicacion web", "aplicativo movil",
-    "base de datos", "oracle", "sql server", "postgresql", "devops",
-    # Cómputo, Periféricos y Audiovisual
+    "tramite documentario", "gestion documental", "mesa de partes virtual",
+    "base de datos", "oracle", "sql server", "postgresql", "devops", "solarwinds",
+    # Cómputo, Periféricos y Aulas Interactivas
     "computadora", "computadoras", "laptop", "laptops", "equipos de computo",
-    "estacion de trabajo", "workstation", "all in one", "tablets", "impresora", "escáner",
-    "equipamiento informatico", "pantalla interactiva", "pizarra interactiva",
+    "estacion de trabajo", "workstation", "all in one", "tablets", "impresora", "escáner", "escaner",
+    "equipamiento informatico", "pantalla interactiva", "pizarra interactiva", "pizarra digital",
     # Servicios Gestionados y Soporte
     "soporte tecnico", "soporte informatico", "servicio informatico", "servicios informaticos",
     "mesa de ayuda", "mesa de servicios", "service desk", "help desk", "outsourcing ti",
@@ -113,10 +119,9 @@ TERMINOS_BUSQUEDA = [
     # Datos, Inteligencia y Transformación
     "inteligencia artificial", "analitica de datos", "business intelligence", "power bi",
     "transformacion digital", "digitalizacion", "firma digital", "certificado digital",
-    "gestion documental", "tramite documentario", "gobierno digital",
-    "auditoria de sistemas", "seguridad de la informacion", "sgsi",
+    "gobierno digital", "auditoria de sistemas", "seguridad de la informacion", "sgsi",
     # Videovigilancia y Seguridad Ciudadana
-    "videovigilancia", "video vigilancia", "camaras de seguridad", "cctv",
+    "videovigilancia", "video vigilancia", "camaras de seguridad", "cctv", "hikvision", "dahua",
     "construccion de videovigilancia", "expediente tecnico videovigilancia",
     "expediente tecnico seguridad ciudadana",
 ]
@@ -127,62 +132,65 @@ REGLAS_TI = {
             "google workspace", "microsoft 365", "office 365", "exchange online",
             "correo electronico en la nube", "central telefonica en nube", "central telefonica virtual",
             "plataforma de colaboracion", "colaboracion en nube", "comunicaciones unificadas",
-            "central telefonica ip", "telefonia ip",
+            "central telefonica ip", "telefonia ip", "anexos virtuales",
         ],
         2: [
             "correo electronico", "correo institucional", "correo corporativo", "colaboracion",
-            "mensajeria electronica", "central telefonica", "telefonia en la nube", "sip trunk", "voip", "smtp",
+            "mensajeria electronica", "central telefonica", "telefonia en la nube", "sip trunk", "troncal sip", "voip", "smtp",
+            "videoconferencia", "teams", "zoom",
         ],
     },
     "Nube": {
-        3: ["amazon web services", "google cloud", "oracle cloud", "azure", "multinube", "cloud computing", "plataforma en la nube"],
-        2: ["infraestructura en nube", "infraestructura cloud", "nube publica", "nube privada", "servicio en la nube", "servicios basados en la nube"],
+        3: ["amazon web services", "google cloud", "oracle cloud", "azure", "multinube", "cloud computing", "plataforma en la nube", "huawei cloud"],
+        2: ["infraestructura en nube", "infraestructura cloud", "nube publica", "nube privada", "servicio en la nube", "servicios basados en la nube", "hosting", "alojamiento web"],
         1: ["cloud", "nube", "iac"],
     },
     "Seguridad Web": {
-        3: ["cloudflare", "firewall de aplicaciones", "waf", "ciberseguridad", "seguridad perimetral", "antiddos", "antispam", "gestion unificada de amenazas", "edr", "xdr", "siem", "soc"],
-        2: ["seguridad informatica", "seguridad de la informacion", "proteccion de correo", "endpoint", "firewall", "utm", "antivirus corporativo"],
+        3: ["fortinet", "fortigate", "check point", "sophos", "trend micro", "palo alto", "cloudflare", "firewall de aplicaciones", "waf", "ciberseguridad", "seguridad perimetral", "antiddos", "antispam", "gestion unificada de amenazas", "edr", "xdr", "siem", "soc"],
+        2: ["seguridad informatica", "seguridad de la informacion", "proteccion de correo", "endpoint", "firewall", "utm", "antivirus corporativo", "vulnerabilidades", "pentesting", "certificado ssl"],
         1: ["vpn", "antivirus", "zero trust"],
     },
     "Backup": {
-        3: ["backup en la nube", "respaldo en la nube", "disaster recovery", "recuperacion ante desastres"],
-        2: ["copias de respaldo", "contingencia", "backup", "respaldo de datos"],
+        3: ["veeam", "veeam backup", "veritas netbackup", "acronis cyber backup", "backup en la nube", "respaldo en la nube", "disaster recovery", "recuperacion ante desastres"],
+        2: ["copias de respaldo", "contingencia", "backup", "respaldo de datos", "veritas", "acronis"],
     },
     "Software": {
         3: [
+            "vmware", "vsphere", "vcenter", "red hat", "rhel", "openshift",
             "software como servicio", "saas", "licencia de software", "suscripcion de software",
             "suscripcion en la nube", "suscripcion para plataforma", "suscripcion de licencias",
             "atlassian", "renovacion de licencias", "renovacion de soporte y licencias",
         ],
         2: [
             "licenciamiento", "licencias de software", "plataforma digital", "sistema de informacion",
+            "tramite documentario", "gestion documental", "solarwinds",
             "mesa de ayuda", "mesa de servicios", "service desk", "suscripcion",
         ],
         1: ["software", "aplicacion web", "sistema web", "helpdesk", "erp", "crm"],
     },
 
     "Infraestructura": {
-        3: ["gabinete de comunicaciones", "gabinete de datos", "rack de comunicaciones", "rack de servidores"],
-        2: ["servidor", "almacenamiento", "storage", "base de datos", "datacenter", "centro de datos", "virtualizacion", "gabinete rack"],
+        3: ["huawei oceanstor", "oceanstor", "fusion server", "cloudengine", "gabinete de comunicaciones", "gabinete de datos", "rack de comunicaciones", "rack de servidores", "vertiv liebert"],
+        2: ["servidor", "almacenamiento", "storage", "base de datos", "datacenter", "centro de datos", "virtualizacion", "gabinete rack", "huawei", "vertiv", "liebert"],
         1: ["infraestructura tecnologica", "conectividad", "fibra optica", "internet dedicado", "red lan", "red wan", "rack"],
     },
     "Redes y Conectividad": {
-        3: ["switch core", "switch de distribucion", "router de borde", "controlador wifi", "balanceador de carga", "load balancer", "software defined wan"],
-        2: ["switch administrable", "switch de red", "router", "access point", "punto de acceso", "red inalambrica", "sd-wan"],
+        3: ["cisco catalyst", "cisco meraki", "aruba cx", "switch core", "switch de distribucion", "router de borde", "controlador wifi", "balanceador de carga", "load balancer", "software defined wan"],
+        2: ["cisco", "aruba", "mikrotik", "ubiquiti", "unifi", "ruijie", "cambium", "switch administrable", "switch de red", "router", "access point", "punto de acceso", "red inalambrica", "sd-wan"],
         1: ["switch", "wifi", "wireless", "nms", "monitoreo de red"],
     },
     "Cableado Estructurado": {
-        3: ["cableado estructurado", "certificacion de cableado", "fusion de fibra optica"],
-        2: ["patch panel", "panel de parcheo", "organizador de cables", "cable de fibra optica"],
+        3: ["furukawa", "panduit", "commscope", "cableado estructurado", "certificacion de cableado", "fusion de fibra optica"],
+        2: ["patch panel", "panel de parcheo", "organizador de cables", "cable de fibra optica", "bandeja de fibra"],
         1: ["patch cord", "transceiver", "fibra optica"],
     },
     "Energía TI": {
-        3: ["sistema de alimentacion ininterrumpida", "unidad de distribucion de energia"],
-        2: ["ups para data center", "ups para centro de datos", "pdu para rack", "pdu inteligente"],
+        3: ["sistema de alimentacion ininterrumpida", "unidad de distribucion de energia", "vertiv ups", "apc smart-ups"],
+        2: ["ups para data center", "ups para centro de datos", "pdu para rack", "pdu inteligente", "apc", "vertiv"],
         1: ["ups", "pdu"],
     },
     "Videovigilancia": {
-        3: ["sistema de videovigilancia", "sistema de video vigilancia", "circuito cerrado de television", "construccion de videovigilancia", "implementacion de videovigilancia", "instalacion de sistema de videovigilancia"],
+        3: ["sistema de videovigilancia", "sistema de video vigilancia", "circuito cerrado de television", "construccion de videovigilancia", "implementacion de videovigilancia", "instalacion de sistema de videovigilancia", "hikvision", "dahua"],
         2: ["videovigilancia", "video vigilancia", "camara ip", "cctv", "ampliacion de videovigilancia", "mejoramiento de videovigilancia", "mantenimiento de videovigilancia"],
     },
     "GPON": {
@@ -935,12 +943,29 @@ HEADERS_SCRAPER = {
 }
 
 TERMINOS_MENORES = [
-    "nube", "cloud", "software", "correo electronico", "ciberseguridad",
-    "servidor", "licenciamiento", "soporte tecnico", "central telefonica",
-    "videovigilancia", "cableado estructurado", "fibra optica", "switch",
-    "ups", "datacenter", "impresora", "computadora", "laptop",
-    "digitalizacion", "firma digital", "colaboracion", "suscripcion",
-    "telefonia", "antivirus", "redes", "storage", "helpdesk", "equipamiento informatico",
+    # Nube, Hosting y Respaldo (Veeam, Cloud, Datacenter)
+    "nube", "cloud", "backup", "respaldo", "veeam", "hosting", "alojamiento web",
+    "disaster recovery", "virtualizacion", "storage", "datacenter",
+    # Marcas y Soluciones LOL (Licencias OnLine)
+    "vmware", "red hat", "check point", "sophos", "trend micro", "veritas", "acronis", "solarwinds",
+    # Marcas y Soluciones NEXUS Technology
+    "huawei", "fortinet", "cisco", "aruba", "furukawa", "panduit", "vertiv", "liebert",
+    "mikrotik", "ubiquiti", "hikvision", "dahua", "ruijie", "cambium",
+    # Correo, Telefonía, VoIP y Colaboración
+    "correo electronico", "microsoft 365", "office 365", "colaboracion", "central telefonica",
+    "telefonia", "voip", "sip trunk", "anexos virtuales", "videoconferencia",
+    # Ciberseguridad y Redes
+    "ciberseguridad", "antivirus", "firewall", "seguridad perimetral", "soc", "siem",
+    "edr", "vulnerabilidades", "certificado ssl", "redes", "switch", "router", "wifi",
+    "access point", "internet dedicado", "enlace de internet", "enlace de datos", "sd-wan",
+    "cableado estructurado", "fibra optica", "ups",
+    # Software, Licenciamiento y Trámite Documentario
+    "software", "licenciamiento", "suscripcion", "tramite documentario", "gestion documental",
+    "mesa de partes", "base de datos", "power bi",
+    # Cómputo, Periféricos y Aulas Interactivas
+    "computadora", "laptop", "servidor", "equipamiento informatico", "impresora", "escaner",
+    "workstation", "pantalla interactiva", "pizarra digital", "digitalizacion", "firma digital",
+    "soporte tecnico", "helpdesk", "videovigilancia",
 ]
 
 
