@@ -111,7 +111,9 @@ TERMINOS_BUSQUEDA = [
     # Cómputo, Periféricos y Aulas Interactivas
     "computadora", "computadoras", "laptop", "laptops", "equipos de computo",
     "estacion de trabajo", "workstation", "all in one", "tablets", "impresora", "escáner", "escaner",
-    "equipamiento informatico", "pantalla interactiva", "pizarra interactiva", "pizarra digital",
+    "equipamiento informatico", "pantalla interactiva", "pantallas interactivas", "panel interactivo",
+    "paneles interactivos", "pizarra interactiva", "pizarra digital", "monitor interactivo",
+    "viewboard", "maxhub", "ideahub", "newline", "promethean",
     # Servicios Gestionados y Soporte
     "soporte tecnico", "soporte informatico", "servicio informatico", "servicios informaticos",
     "mesa de ayuda", "mesa de servicios", "service desk", "help desk", "outsourcing ti",
@@ -199,9 +201,16 @@ REGLAS_TI = {
         1: ["gpon", "transceiver optico", "patch cord optico"],
     },
     "Pantallas Interactivas": {
-        3: ["pantalla interactiva", "pantallas interactivas", "panel interactivo", "paneles interactivos", "pizarra digital interactiva", "pizarras digitales interactivas", "monitor interactivo"],
-        2: ["pizarra interactiva", "pizarras interactivas", "display interactivo", "pantalla tactil educativa", "panel tactil"],
-        1: ["pantalla tactil", "pantallas tactiles", "smart board"],
+        3: [
+            "pantalla interactiva", "pantallas interactivas", "panel interactivo", "paneles interactivos",
+            "pizarra digital interactiva", "pizarras digitales interactivas", "monitor interactivo",
+            "viewsonic viewboard", "viewboard", "newline interactive", "promethean activpanel", "huawei ideahub", "maxhub",
+        ],
+        2: [
+            "pizarra interactiva", "pizarras interactivas", "display interactivo", "pantalla tactil educativa", "panel tactil",
+            "smart board", "pantalla tactil interactiva", "solucion interactiva para aula",
+        ],
+        1: ["pantalla tactil", "pantallas tactiles", "smart board", "proyector interactivo"],
     },
     "Cómputo y Periféricos": {
         3: ["equipamiento informatico", "equipos de computo", "computadora de escritorio", "estacion de trabajo"],
@@ -964,8 +973,9 @@ TERMINOS_MENORES = [
     "mesa de partes", "base de datos", "power bi",
     # Cómputo, Periféricos y Aulas Interactivas
     "computadora", "laptop", "servidor", "equipamiento informatico", "impresora", "escaner",
-    "workstation", "pantalla interactiva", "pizarra digital", "digitalizacion", "firma digital",
-    "soporte tecnico", "helpdesk", "videovigilancia",
+    "workstation", "pantalla interactiva", "pantallas interactivas", "panel interactivo",
+    "pizarra interactiva", "pizarra digital", "monitor interactivo", "viewboard", "maxhub", "ideahub",
+    "digitalizacion", "firma digital", "soporte tecnico", "helpdesk", "videovigilancia",
 ]
 
 
