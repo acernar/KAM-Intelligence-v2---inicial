@@ -141,20 +141,22 @@ def _mostrar_ayuda_gmail_streamlit():
 
 def _get_ai_api_key(proveedor):
     """Obtiene credenciales de IA desde entorno o Streamlit Secrets."""
-    if proveedor == 'Gemini (Google)':
+    if "Gemini" in proveedor:
         env_name = 'GEMINI_API_KEY'
-    elif proveedor == 'ChatGPT (OpenAI)':
+    elif "ChatGPT" in proveedor or "OpenAI" in proveedor:
         env_name = 'OPENAI_API_KEY'
-    else:
+    elif "Claude" in proveedor or "Anthropic" in proveedor:
         env_name = 'ANTHROPIC_API_KEY'
+    else:
+        return ""
     key = os.environ.get(env_name, '')
     try:
         ai_secrets = st.secrets.get('ai', {})
         key = key or st.secrets.get(env_name, '')
         if not key:
-            if proveedor == 'Gemini (Google)':
+            if "Gemini" in proveedor:
                 secret_name = 'gemini_api_key'
-            elif proveedor == 'ChatGPT (OpenAI)':
+            elif "ChatGPT" in proveedor or "OpenAI" in proveedor:
                 secret_name = 'openai_api_key'
             else:
                 secret_name = 'anthropic_api_key'
@@ -175,22 +177,72 @@ def _extraer_texto_openai(data):
     return '\n'.join(textos).strip()
 
 def consultar_ia(proveedor, sistema, entrada, max_tokens=2400):
-    """Cliente común para Gemini, ChatGPT y Claude; retorna (texto, error)."""
+    """Cliente común para Antigravity ($0), Extractor Offline ($0), Gemini Free ($0), ChatGPT y Claude."""
     import urllib.request
     import urllib.error
+    import subprocess
+    import shutil
 
+    # 1. Antigravity CLI (AGY - Local $0 de costo)
+    if "Antigravity" in proveedor or "AGY" in proveedor:
+        if isinstance(entrada, list):
+            historial_txt = "\n".join(f"{m.get('role', 'user').upper()}: {m.get('content', '')}" for m in entrada)
+            prompt_completo = f"INSTRUCCIONES DEL SISTEMA:\n{sistema}\n\nHISTORIAL:\n{historial_txt}\n\nResponde conciso y profesional:"
+        else:
+            prompt_completo = f"INSTRUCCIONES DEL SISTEMA:\n{sistema}\n\nCONSULTA:\n{entrada}\n\nResponde conciso y profesional:"
+
+        agy_bin = shutil.which("agy") or os.path.expanduser("~/.local/bin/agy")
+        if not os.path.exists(agy_bin):
+            return None, "El ejecutable de Antigravity ('agy') no se encontró en esta máquina."
+        try:
+            res = subprocess.run(
+                [agy_bin, "--disable-slash-commands", "-p", prompt_completo],
+                capture_output=True,
+                stdin=subprocess.DEVNULL,
+                text=True,
+                timeout=75,
+            )
+            if res.returncode == 0 and res.stdout.strip():
+                return res.stdout.strip(), None
+            return None, f"Antigravity CLI retornó error ({res.returncode}): {res.stderr[:400]}"
+        except subprocess.TimeoutExpired:
+            return None, "Tiempo de espera agotado en Antigravity CLI (75s)."
+        except Exception as e:
+            return None, f"Error invocando Antigravity CLI: {e}"
+
+    # 2. Extractor Heurístico Offline (Sin API Key - Costo $0)
+    if "Offline" in proveedor or "Extractor" in proveedor:
+        from seace_sync import analizar_tdr_inteligente
+        res = analizar_tdr_inteligente(str(entrada))
+        texto = (
+            f"### 📋 Resumen Heurístico Offline (Costo $0)\n\n"
+            f"* **Marcas detectadas:** {res.get('tdr_marcas') or 'No identificadas en el extracto'}\n"
+            f"* **Plazo de entrega:** {res.get('tdr_plazo') or 'No especificado explícitamente'}\n"
+            f"* **Garantía comercial:** {res.get('tdr_garantia') or 'No especificada'}\n"
+            f"* **Certificaciones requeridas:** {res.get('tdr_certificaciones') or 'Ninguna'}\n"
+            f"* **Alertas de riesgo / Banderas rojas:** {res.get('tdr_alertas_riesgo') or 'Ninguna detectada'}\n\n"
+            f"💡 *Nota:* {res.get('tdr_resumen_ia') or 'Análisis heurístico completado exitosamente.'}"
+        )
+        return texto, None
+
+    # 3. Modelos vía API Cloud (Gemini Free Tier, ChatGPT, Claude)
     api_key = _get_ai_api_key(proveedor)
     if not api_key:
-        if proveedor == 'Gemini (Google)':
+        if "Gemini" in proveedor:
             variable = 'GEMINI_API_KEY'
-        elif proveedor == 'ChatGPT (OpenAI)':
+            return None, (
+                f"Falta configurar {variable}. "
+                f"¡Puedes obtener tu API Key 100% GRATIS en https://aistudio.google.com/app/apikey "
+                f"y pegarla en tu `.env` (o selecciona 'Antigravity CLI (AGY - Local $0)' para costo $0)!"
+            )
+        elif "ChatGPT" in proveedor:
             variable = 'OPENAI_API_KEY'
         else:
             variable = 'ANTHROPIC_API_KEY'
-        return None, f"Falta configurar {variable} en los secretos de la aplicación."
+        return None, f"Falta configurar {variable} en los secretos o variables de entorno."
 
     mensajes = entrada if isinstance(entrada, list) else [{'role': 'user', 'content': str(entrada)}]
-    if proveedor == 'Gemini (Google)':
+    if "Gemini" in proveedor:
         prompt_completo = f"{sistema}\n\n{entrada}"
         payload = {
             "contents": [{"parts": [{"text": prompt_completo}]}],
@@ -198,9 +250,9 @@ def consultar_ia(proveedor, sistema, entrada, max_tokens=2400):
         }
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
         headers = {'Content-Type': 'application/json'}
-    elif proveedor == 'ChatGPT (OpenAI)':
+    elif "ChatGPT" in proveedor:
         payload = {
-            'model': 'gpt-5.6',
+            'model': 'gpt-4o-mini',
             'instructions': sistema,
             'input': mensajes,
             'max_output_tokens': max_tokens,
@@ -212,7 +264,7 @@ def consultar_ia(proveedor, sistema, entrada, max_tokens=2400):
         }
     else:
         payload = {
-            'model': 'claude-sonnet-4-6',
+            'model': 'claude-3-5-sonnet-20241022',
             'max_tokens': max_tokens,
             'system': sistema,
             'messages': mensajes,
@@ -233,12 +285,12 @@ def consultar_ia(proveedor, sistema, entrada, max_tokens=2400):
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             data = json.loads(resp.read().decode('utf-8'))
-        if proveedor == 'Gemini (Google)':
+        if "Gemini" in proveedor:
             try:
                 texto = data['candidates'][0]['content']['parts'][0]['text']
             except (KeyError, IndexError):
                 texto = None
-        elif proveedor == 'ChatGPT (OpenAI)':
+        elif "ChatGPT" in proveedor:
             texto = _extraer_texto_openai(data)
         else:
             texto = data['content'][0]['text']
@@ -5134,16 +5186,22 @@ Revisar y completar los campos marcados con [COMPLETAR] antes de presentar.
         </div>
     </div>
     """, unsafe_allow_html=True)
-        st.caption("Analiza procesos, mercado y competidores. Los resultados se guardan para reutilizarlos en Forecast.")
+        st.caption("Analiza procesos, mercado y competidores con IA sin costo o modelos cloud.")
+        OPCIONES_MOTORES = [
+            "Antigravity CLI (AGY - Local $0)",
+            "Extractor Inteligente Offline (Sin API Key - $0)",
+            "Gemini (Google AI Studio - Free $0)",
+            "ChatGPT (OpenAI)",
+            "Claude (Anthropic)",
+        ]
         MOTOR_IA = st.selectbox(
             "Motor de inteligencia:",
-            ["ChatGPT (OpenAI)", "Claude (Anthropic)"],
+            OPCIONES_MOTORES,
             key="motor_ia_licitaciones",
         )
-        if not _get_ai_api_key(MOTOR_IA):
-            variable = 'OPENAI_API_KEY' if MOTOR_IA == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
-            st.warning(f"Configura `{variable}` en los secretos de la aplicación para activar este motor.")
-            st.stop()
+        if MOTOR_IA not in ("Antigravity CLI (AGY - Local $0)", "Extractor Inteligente Offline (Sin API Key - $0)") and not _get_ai_api_key(MOTOR_IA):
+            variable = 'GEMINI_API_KEY' if 'Gemini' in MOTOR_IA else ('OPENAI_API_KEY' if 'ChatGPT' in MOTOR_IA else 'ANTHROPIC_API_KEY')
+            st.info(f"💡 Para usar {MOTOR_IA}, configura `{variable}` en `.env` o en Secrets. Puedes usar 'Antigravity CLI (AGY - Local $0)' o 'Extractor Inteligente Offline' a costo $0.")
 
         def consultar_claude(sistema, usuario, max_tokens=2400):
             return consultar_ia(MOTOR_IA, sistema, usuario, max_tokens)
@@ -5552,20 +5610,23 @@ elif "Menores" in tipo_proceso and seccion == "🤖 Inteligencia Artificial":
     </div>
     """, unsafe_allow_html=True)
 
+    OPCIONES_MOTORES_M = [
+        "Antigravity CLI (AGY - Local $0)",
+        "Extractor Inteligente Offline (Sin API Key - $0)",
+        "Gemini (Google AI Studio - Free $0)",
+        "ChatGPT (OpenAI)",
+        "Claude (Anthropic)",
+    ]
     MOTOR_IA_M = st.selectbox(
         "Motor de inteligencia:",
-        ["Gemini (Google)", "ChatGPT (OpenAI)", "Claude (Anthropic)", "Extractor Inteligente Offline (Sin API Key)"],
+        OPCIONES_MOTORES_M,
         key="motor_ia_menores",
     )
-    if MOTOR_IA_M != "Extractor Inteligente Offline (Sin API Key)" and not _get_ai_api_key(MOTOR_IA_M):
-        variable = 'GEMINI_API_KEY' if MOTOR_IA_M == 'Gemini (Google)' else ('OPENAI_API_KEY' if MOTOR_IA_M == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY')
-        st.info(f"💡 Para usar {MOTOR_IA_M}, configura `{variable}` en `.env` o en Secrets. Puedes usar 'Extractor Inteligente Offline (Sin API Key)' sin costo.")
+    if MOTOR_IA_M not in ("Antigravity CLI (AGY - Local $0)", "Extractor Inteligente Offline (Sin API Key - $0)") and not _get_ai_api_key(MOTOR_IA_M):
+        variable = 'GEMINI_API_KEY' if 'Gemini' in MOTOR_IA_M else ('OPENAI_API_KEY' if 'ChatGPT' in MOTOR_IA_M else 'ANTHROPIC_API_KEY')
+        st.info(f"💡 Para usar {MOTOR_IA_M}, configura `{variable}` en `.env` o en Secrets. Puedes usar 'Antigravity CLI (AGY - Local $0)' o 'Extractor Inteligente Offline' a costo $0.")
 
     def consultar_claude_m(sistema, usuario, max_tokens=2400):
-        if MOTOR_IA_M == "Extractor Inteligente Offline (Sin API Key)":
-            from seace_sync import analizar_tdr_inteligente
-            res = analizar_tdr_inteligente(str(usuario))
-            return f"**Resumen Técnico:**\n- Marcas: {res.get('tdr_marcas') or 'No identificadas'}\n- Plazo: {res.get('tdr_plazo') or 'No especificado'}\n- Garantía: {res.get('tdr_garantia') or 'No especificada'}\n- Certificaciones: {res.get('tdr_certificaciones') or 'Ninguna'}\n- Banderas rojas: {res.get('tdr_alertas_riesgo') or 'Ninguna'}\n\n**Síntesis:** {res.get('tdr_resumen_ia')}", None
         return consultar_ia(MOTOR_IA_M, sistema, usuario, max_tokens)
 
     SISTEMA_KAM_M = """Eres un experto en contrataciones públicas peruanas y estrategia comercial B2B para el sector TI.
