@@ -9,3 +9,4 @@ google-auth-oauthlib
 pypdf
 beautifulsoup4
 requests
+PyMuPDF

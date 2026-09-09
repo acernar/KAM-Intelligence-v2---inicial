@@ -114,13 +114,23 @@ def _mostrar_ayuda_gmail_streamlit():
 
 def _get_ai_api_key(proveedor):
     """Obtiene credenciales de IA desde entorno o Streamlit Secrets."""
-    env_name = 'OPENAI_API_KEY' if proveedor == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
+    if proveedor == 'Gemini (Google)':
+        env_name = 'GEMINI_API_KEY'
+    elif proveedor == 'ChatGPT (OpenAI)':
+        env_name = 'OPENAI_API_KEY'
+    else:
+        env_name = 'ANTHROPIC_API_KEY'
     key = os.environ.get(env_name, '')
     try:
         ai_secrets = st.secrets.get('ai', {})
         key = key or st.secrets.get(env_name, '')
         if not key:
-            secret_name = 'openai_api_key' if proveedor == 'ChatGPT (OpenAI)' else 'anthropic_api_key'
+            if proveedor == 'Gemini (Google)':
+                secret_name = 'gemini_api_key'
+            elif proveedor == 'ChatGPT (OpenAI)':
+                secret_name = 'openai_api_key'
+            else:
+                secret_name = 'anthropic_api_key'
             key = ai_secrets.get(secret_name, '')
     except Exception:
         pass
@@ -138,17 +148,30 @@ def _extraer_texto_openai(data):
     return '\n'.join(textos).strip()
 
 def consultar_ia(proveedor, sistema, entrada, max_tokens=2400):
-    """Cliente común para ChatGPT y Claude; retorna (texto, error)."""
+    """Cliente común para Gemini, ChatGPT y Claude; retorna (texto, error)."""
     import urllib.request
     import urllib.error
 
     api_key = _get_ai_api_key(proveedor)
     if not api_key:
-        variable = 'OPENAI_API_KEY' if proveedor == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
+        if proveedor == 'Gemini (Google)':
+            variable = 'GEMINI_API_KEY'
+        elif proveedor == 'ChatGPT (OpenAI)':
+            variable = 'OPENAI_API_KEY'
+        else:
+            variable = 'ANTHROPIC_API_KEY'
         return None, f"Falta configurar {variable} en los secretos de la aplicación."
 
     mensajes = entrada if isinstance(entrada, list) else [{'role': 'user', 'content': str(entrada)}]
-    if proveedor == 'ChatGPT (OpenAI)':
+    if proveedor == 'Gemini (Google)':
+        prompt_completo = f"{sistema}\n\n{entrada}"
+        payload = {
+            "contents": [{"parts": [{"text": prompt_completo}]}],
+            "generationConfig": {"maxOutputTokens": max_tokens}
+        }
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        headers = {'Content-Type': 'application/json'}
+    elif proveedor == 'ChatGPT (OpenAI)':
         payload = {
             'model': 'gpt-5.6',
             'instructions': sistema,
@@ -183,7 +206,15 @@ def consultar_ia(proveedor, sistema, entrada, max_tokens=2400):
     try:
         with urllib.request.urlopen(req, timeout=90) as resp:
             data = json.loads(resp.read().decode('utf-8'))
-        texto = _extraer_texto_openai(data) if proveedor == 'ChatGPT (OpenAI)' else data['content'][0]['text']
+        if proveedor == 'Gemini (Google)':
+            try:
+                texto = data['candidates'][0]['content']['parts'][0]['text']
+            except (KeyError, IndexError):
+                texto = None
+        elif proveedor == 'ChatGPT (OpenAI)':
+            texto = _extraer_texto_openai(data)
+        else:
+            texto = data['content'][0]['text']
         return (texto, None) if texto else (None, 'La IA respondió sin texto.')
     except urllib.error.HTTPError as e:
         detalle = e.read().decode('utf-8', errors='replace')
@@ -1726,9 +1757,10 @@ st.markdown("---")
 with st.sidebar:
     st.title("🔧 NAVEGACIÓN")
     
-    # Diagnóstico de Google Sheets
+    # Diagnóstico de Google Sheets y Daemon
     if _gsheets_activo():
-        st.caption("☁️ Google Sheets activo")
+        st.caption("☁️ Google Sheets: Conectado")
+        st.caption("🟢 Sincronizador: Activo (5x/día)")
     else:
         st.caption("💾 Modo local (JSON)")
     
@@ -2787,7 +2819,7 @@ elif "Menores" in tipo_proceso and seccion == "📅 Calendario de Renovaciones":
     
     st.markdown("---")
     
-    tab_calendario, tab_editar = st.tabs(["📅 Ver calendario", "✏️ Confirmar fecha real de un proceso"])
+    tab_calendario, tab_radar, tab_editar = st.tabs(["📅 Ver calendario", "📡 Radar Predictivo 90/60/30 días (Nuevo)", "✏️ Confirmar fecha real de un proceso"])
     
     with tab_calendario:
         # Filtros
@@ -2873,7 +2905,62 @@ elif "Menores" in tipo_proceso and seccion == "📅 Calendario de Renovaciones":
         
         if renov_filtered.empty:
             st.info("No hay renovaciones que coincidan con los filtros seleccionados.")
-    
+
+    with tab_radar:
+        st.markdown("#### 📡 Radar Predictivo de Renovaciones de Contratos")
+        st.caption("Detecta contratos recurrentes del Estado (licencias, soporte, nube, telecomunicaciones) que están a punto de vencer para que el KAM contacte al área usuaria antes de que se publique la convocatoria en SEACE.")
+
+        try:
+            from seace_sync import calcular_radar_renovaciones
+            radar_items = calcular_radar_renovaciones(df.to_dict('records'), dias_horizonte=120)
+        except Exception as e_rad:
+            radar_items = []
+            st.warning(f"No se pudo calcular el radar predictivo: {e_rad}")
+
+        if not radar_items:
+            st.info("No se detectaron contratos próximos a vencer en el horizonte seleccionado.")
+        else:
+            radar_df = pd.DataFrame(radar_items)
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                st.metric("Oportunidades Predictivas", len(radar_df))
+            with c2:
+                urg = len(radar_df[radar_df['dias_restantes'] <= 30])
+                st.metric("🔴 Urgente (< 30 días)", urg)
+            with c3:
+                prev = len(radar_df[(radar_df['dias_restantes'] > 30) & (radar_df['dias_restantes'] <= 60)])
+                st.metric("🟡 Contacto (30-60 días)", prev)
+            with c4:
+                est = len(radar_df[radar_df['dias_restantes'] > 60])
+                st.metric("🟢 Estratégica (60-90 días)", est)
+
+            filtro_etapa = st.multiselect("Filtrar por ventana de anticipación:", radar_df['etapa'].unique(), default=radar_df['etapa'].unique(), key="filtro_radar_etapa_m")
+            radar_view = radar_df[radar_df['etapa'].isin(filtro_etapa)]
+
+            st.dataframe(
+                radar_view[['etapa', 'fecha_proyectada', 'dias_restantes', 'entidad', 'subcategoria', 'descripcion', 'accion_sugerida']],
+                column_config={
+                    "etapa": st.column_config.TextColumn("Ventana de Oportunidad", width="medium"),
+                    "fecha_proyectada": st.column_config.DateColumn("Renovación Estimada"),
+                    "dias_restantes": st.column_config.NumberColumn("Días Restantes"),
+                    "entidad": st.column_config.TextColumn("Entidad Pública", width="medium"),
+                    "subcategoria": st.column_config.TextColumn("Categoría TI"),
+                    "descripcion": st.column_config.TextColumn("Objeto del Servicio", width="large"),
+                    "accion_sugerida": st.column_config.TextColumn("Acción Comercial Recomendada", width="large"),
+                },
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            csv_radar = radar_view.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                "📥 Exportar Radar Predictivo a CSV",
+                data=csv_radar,
+                file_name=f"radar_renovaciones_menores_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv",
+                key="btn_descarga_radar_m"
+            )
+
     with tab_editar:
         st.markdown("#### Confirmar la fecha real de inicio de contrato")
         st.caption("Revisa el TDR o la orden de servicio en SEACE y registra el dato real aquí. Esto reemplaza la estimación automática de 12 meses.")
@@ -2933,7 +3020,7 @@ elif "Menores" in tipo_proceso and seccion == "👥 CRM y Seguimiento":
     if 'crm_cliente_activo' not in st.session_state:
         st.session_state.crm_cliente_activo = clientes_df.index[0]
     
-    tab1, tab2, tab3 = st.tabs(["Entidades", "Contactos", "Historial"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Entidades", "Contactos", "Historial", "🎯 Pipeline Kanban (Nuevo)"])
     
     with tab1:
         st.markdown("#### Base de Clientes")
@@ -3047,6 +3134,58 @@ elif "Menores" in tipo_proceso and seccion == "👥 CRM y Seguimiento":
                 st.rerun()
             else:
                 st.warning("Escribe una nota antes de guardar.")
+
+    with tab4:
+        st.markdown("#### 🎯 Pipeline Comercial de Oportunidades")
+        st.caption("Gestiona el ciclo comercial de las contrataciones menores desde la detección hasta la adjudicación.")
+
+        ESTADOS_PIPELINE = ["📥 Descubierta", "🔍 En Evaluación", "📝 Cotizada / Presentada", "🏆 Adjudicada a Qubits", "❌ Descartada"]
+
+        if 'pipeline_estados' not in st.session_state:
+            st.session_state.pipeline_estados = {}
+
+        col_sel1, col_sel2, col_sel3 = st.columns([3, 2, 1])
+        with col_sel1:
+            p_elegido = st.selectbox(
+                "Mover oportunidad en el Pipeline:",
+                df['id'].astype(str) + " | " + df['entidad'].astype(str) + " | " + df['descripcion'].astype(str).str[:40],
+                key="p_kanban_sel"
+            )
+        with col_sel2:
+            pid_k = p_elegido.split(" | ")[0]
+            estado_actual = st.session_state.pipeline_estados.get(pid_k, "📥 Descubierta")
+            nuevo_estado = st.selectbox("Nuevo estado:", ESTADOS_PIPELINE, index=ESTADOS_PIPELINE.index(estado_actual) if estado_actual in ESTADOS_PIPELINE else 0, key="nuevo_estado_kanban")
+        with col_sel3:
+            st.write("")
+            st.write("")
+            if st.button("💾 Mover", key="btn_update_kanban"):
+                st.session_state.pipeline_estados[pid_k] = nuevo_estado
+                st.success(f"Oportunidad {pid_k} movida a {nuevo_estado}")
+                st.rerun()
+
+        st.markdown("---")
+
+        k_cols = st.columns(len(ESTADOS_PIPELINE))
+        for i, est in enumerate(ESTADOS_PIPELINE):
+            with k_cols[i]:
+                st.markdown(f"**{est}**")
+                items_en_estado = [
+                    row for _, row in df.head(40).iterrows()
+                    if st.session_state.pipeline_estados.get(str(row['id']), "📥 Descubierta") == est
+                ]
+                st.caption(f"{len(items_en_estado)} oportunidades")
+                for it in items_en_estado[:6]:
+                    cierre_txt = it.get('finCotz', 'S/F')
+                    monto_v = float(it.get('montoReferencial', 0) or 0)
+                    monto_lbl = f"S/ {monto_v:,.0f}" if monto_v > 0 else "≤8 UIT"
+                    st.markdown(f"""
+                    <div style='background-color:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px;margin-bottom:8px;font-size:12px;'>
+                        <b>{it.get('id')}</b><br>
+                        <span style='color:#334155;'>{str(it.get('entidad'))[:25]}</span><br>
+                        <span style='color:#64748b;'>{str(it.get('descripcion'))[:40]}...</span><br>
+                        <span style='color:#0284c7;font-weight:600;'>{monto_lbl}</span> · <span style='color:#ea580c;'>⏰ {cierre_txt}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # ==================== SECCIÓN 3B: ANÁLISIS DE COMPETENCIA ====================
 elif "Menores" in tipo_proceso and seccion == "💼 Análisis de Competencia":
@@ -5388,15 +5527,18 @@ elif "Menores" in tipo_proceso and seccion == "🤖 Inteligencia Artificial":
 
     MOTOR_IA_M = st.selectbox(
         "Motor de inteligencia:",
-        ["ChatGPT (OpenAI)", "Claude (Anthropic)"],
+        ["Gemini (Google)", "ChatGPT (OpenAI)", "Claude (Anthropic)", "Extractor Inteligente Offline (Sin API Key)"],
         key="motor_ia_menores",
     )
-    if not _get_ai_api_key(MOTOR_IA_M):
-        variable = 'OPENAI_API_KEY' if MOTOR_IA_M == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY'
-        st.warning(f"Configura `{variable}` en los secretos de la aplicación para activar este motor.")
-        st.stop()
+    if MOTOR_IA_M != "Extractor Inteligente Offline (Sin API Key)" and not _get_ai_api_key(MOTOR_IA_M):
+        variable = 'GEMINI_API_KEY' if MOTOR_IA_M == 'Gemini (Google)' else ('OPENAI_API_KEY' if MOTOR_IA_M == 'ChatGPT (OpenAI)' else 'ANTHROPIC_API_KEY')
+        st.info(f"💡 Para usar {MOTOR_IA_M}, configura `{variable}` en `.env` o en Secrets. Puedes usar 'Extractor Inteligente Offline (Sin API Key)' sin costo.")
 
     def consultar_claude_m(sistema, usuario, max_tokens=2400):
+        if MOTOR_IA_M == "Extractor Inteligente Offline (Sin API Key)":
+            from seace_sync import analizar_tdr_inteligente
+            res = analizar_tdr_inteligente(str(usuario))
+            return f"**Resumen Técnico:**\n- Marcas: {res.get('tdr_marcas') or 'No identificadas'}\n- Plazo: {res.get('tdr_plazo') or 'No especificado'}\n- Garantía: {res.get('tdr_garantia') or 'No especificada'}\n- Certificaciones: {res.get('tdr_certificaciones') or 'Ninguna'}\n- Banderas rojas: {res.get('tdr_alertas_riesgo') or 'Ninguna'}\n\n**Síntesis:** {res.get('tdr_resumen_ia')}", None
         return consultar_ia(MOTOR_IA_M, sistema, usuario, max_tokens)
 
     SISTEMA_KAM_M = """Eres un experto en contrataciones públicas peruanas y estrategia comercial B2B para el sector TI.
@@ -5409,12 +5551,106 @@ Responde en español formal peruano, con análisis concreto y accionable.
     if len(df) == 0:
         st.info("Agrega procesos primero para usar el análisis de IA.")
     else:
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab_tdr, tab1, tab2, tab3, tab4 = st.tabs([
+            "📑 Analizador Rápido de TDRs (Nuevo)",
             "🎯 Análisis de Proceso",
             "📊 Inteligencia de Mercado",
             "🏆 Estrategia Competitiva",
             "💬 Consulta Libre"
         ])
+
+        with tab_tdr:
+            st.markdown("#### 📑 Analizador Inteligente de Requerimientos y TDRs")
+            st.caption("Extrae marcas dirigidas, plazos de entrega, perfiles técnicos clave, garantías exigidas y banderas rojas de cualquier TDR o bases públicas.")
+
+            modo_tdr = st.radio("Origen del requerimiento:", ["Seleccionar de la base de datos", "Subir archivo PDF de TDR", "Pegar texto del TDR"], horizontal=True, key="modo_tdr_input")
+
+            texto_para_analisis = ""
+            meta_titulo = ""
+            meta_entidad = ""
+
+            if modo_tdr == "Seleccionar de la base de datos":
+                proceso_sel = st.selectbox("Selecciona el proceso a analizar:", df['id'].astype(str) + " - " + df['entidad'].astype(str) + " (" + df['subcategoria'].astype(str) + ")", key="sel_tdr_db")
+                if proceso_sel:
+                    pid_sel = proceso_sel.split(" - ")[0]
+                    fila_p = df[df['id'] == pid_sel].iloc[0]
+                    meta_titulo = str(fila_p.get('descripcion', ''))
+                    meta_entidad = str(fila_p.get('entidad', ''))
+                    texto_para_analisis = f"{meta_titulo} {fila_p.get('cubo', '')} {fila_p.get('subcategoria', '')}"
+                    docs_p = fila_p.get('documentos_bases', [])
+                    if isinstance(docs_p, str):
+                        try: docs_p = json.loads(docs_p)
+                        except: docs_p = []
+                    if docs_p and isinstance(docs_p, list) and docs_p[0].get('url'):
+                        st.info(f"🔗 TDR oficial disponible: [{docs_p[0].get('titulo', 'Descargar bases')}]({docs_p[0]['url']})")
+                        if st.button("📥 Descargar y Analizar TDR Oficial Automáticamente", key="btn_leer_tdr_db"):
+                            with st.spinner("Descargando PDF y extrayendo requerimientos técnicos..."):
+                                try:
+                                    import urllib.request
+                                    from seace_sync import extraer_texto_pdf, HEADERS_SCRAPER, OECE_HEADERS
+                                    headers = HEADERS_SCRAPER if "licitacionesperu" in docs_p[0]['url'] else OECE_HEADERS
+                                    req = urllib.request.Request(docs_p[0]['url'], headers=headers)
+                                    with urllib.request.urlopen(req, timeout=20) as resp:
+                                        pdf_bytes = resp.read()
+                                    texto_extraido, num_p = extraer_texto_pdf(pdf_bytes, max_paginas=80)
+                                    if texto_extraido:
+                                        texto_para_analisis = texto_extraido
+                                        st.success(f"✅ TDR extraído con éxito ({num_p} páginas revisadas).")
+                                    else:
+                                        st.warning("El PDF no contiene texto legible (posiblemente escaneado).")
+                                except Exception as err:
+                                    st.error(f"No se pudo descargar automáticamente: {err}")
+
+            elif modo_tdr == "Subir archivo PDF de TDR":
+                archivo_subido = st.file_uploader("Sube el PDF de bases o TDR:", type=["pdf"], key="upload_tdr_pdf")
+                if archivo_subido is not None:
+                    from seace_sync import extraer_texto_pdf
+                    with st.spinner("Extrayendo texto del PDF..."):
+                        texto_para_analisis, num_p = extraer_texto_pdf(archivo_subido.read(), max_paginas=100)
+                        st.success(f"✅ Documento procesado: {num_p} páginas analizadas.")
+
+            else:
+                texto_para_analisis = st.text_area("Pega aquí el contenido de las especificaciones técnicas o TDR:", height=180, key="txt_tdr_pasted")
+
+            if texto_para_analisis:
+                from seace_sync import analizar_tdr_inteligente
+                resultado_tdr = analizar_tdr_inteligente(texto_para_analisis, {"titulo": meta_titulo, "entidad": meta_entidad})
+
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    st.markdown("##### 🏷️ Marcas y Tecnologías Detectadas")
+                    if resultado_tdr.get('tdr_marcas'):
+                        st.info(f"**{resultado_tdr['tdr_marcas']}**")
+                    else:
+                        st.write("No se mencionan marcas comerciales explícitas.")
+
+                    st.markdown("##### ⏱️ Plazo de Entrega / Servicio")
+                    if resultado_tdr.get('tdr_plazo'):
+                        st.warning(f"**{resultado_tdr['tdr_plazo']}**")
+                    else:
+                        st.write("No detectado explícitamente en el extracto.")
+
+                    st.markdown("##### 🛡️ Garantía Comercial Exigida")
+                    if resultado_tdr.get('tdr_garantia'):
+                        st.write(f"**{resultado_tdr['tdr_garantia']}**")
+                    else:
+                        st.write("No especificada en el extracto.")
+
+                with col_b:
+                    st.markdown("##### 🎓 Certificaciones del Personal Clave")
+                    if resultado_tdr.get('tdr_certificaciones'):
+                        st.info(f"**{resultado_tdr['tdr_certificaciones']}**")
+                    else:
+                        st.write("Sin certificaciones técnicas de fabricante explícitas.")
+
+                    st.markdown("##### 🚩 Banderas Rojas y Condiciones Críticas")
+                    if resultado_tdr.get('tdr_alertas_riesgo'):
+                        st.error(f"**{resultado_tdr['tdr_alertas_riesgo']}**")
+                    else:
+                        st.success("Sin barreras de entrada críticas detectadas.")
+
+                st.markdown("##### 📋 Síntesis Comercial para el KAM")
+                st.markdown(f"> *{resultado_tdr.get('tdr_resumen_ia', '')}*")
 
         # ── TAB 1: Análisis individual ──────────────────────────────────
         with tab1:

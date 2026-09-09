@@ -537,17 +537,155 @@ def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -
     }
 
 
-def enriquecer_decision_con_bases(oportunidad: dict, max_mb: int = 25, max_paginas: int = 250) -> dict:
-    """Lee el PDF de bases de procesos de nube nuevos y confirma la política GCP."""
-    texto_inicial = normalizar(
-        f"{oportunidad.get('titulo', '')} {oportunidad.get('descripcion', '')} "
-        f"{oportunidad.get('subcategoria_ti', oportunidad.get('subcategoria', ''))}"
+def extraer_texto_pdf(contenido_bytes: bytes, max_paginas: int = 150) -> tuple[str, int]:
+    """Extrae texto de un buffer PDF usando PyMuPDF (fitz) con fallback a pypdf."""
+    try:
+        import fitz
+        with fitz.open(stream=contenido_bytes, filetype="pdf") as doc:
+            total = len(doc)
+            texto = " ".join((doc[i].get_text() or "") for i in range(min(total, max_paginas)))
+            return texto.strip(), total
+    except Exception:
+        pass
+    try:
+        from pypdf import PdfReader
+        lector = PdfReader(BytesIO(contenido_bytes))
+        total = len(lector.pages)
+        texto = " ".join((lector.pages[i].extract_text() or "") for i in range(min(total, max_paginas)))
+        return texto.strip(), total
+    except Exception:
+        return "", 0
+
+
+def analizar_tdr_inteligente(texto_tdr: str, oportunidad: dict = None) -> dict:
+    """Extrae marcas, plazo, garantía, perfiles requeridos y banderas rojas de un TDR o bases."""
+    if not texto_tdr:
+        return {
+            "tdr_marcas": "",
+            "tdr_plazo": "",
+            "tdr_garantia": "",
+            "tdr_certificaciones": "",
+            "tdr_alertas_riesgo": "",
+            "tdr_resumen_ia": "Documento sin texto extraíble.",
+        }
+
+    texto_lower = texto_tdr.lower()
+
+    # 1. Marcas y tecnologías
+    CATALOGO_MARCAS = [
+        "cisco", "fortinet", "palo alto", "aruba", "huawei", "check point", "sophos",
+        "mikrotik", "ubiquiti", "juniper", "dell", "hpe", "hp", "lenovo", "ibm",
+        "netapp", "synology", "qnap", "microsoft", "google", "aws", "oracle",
+        "vmware", "nutanix", "red hat", "veeam", "kaspersky", "eset", "crowdstrike",
+        "sentinelone", "asterisk", "grandstream", "yealink", "avaya", "webex", "zoom",
+        "3cx", "hikvision", "dahua", "axis", "hanwha", "bosch", "uniview", "milestone",
+        "genetec", "schneider", "apc", "eaton", "vertiv", "tripp lite"
+    ]
+    marcas = []
+    for m in CATALOGO_MARCAS:
+        if re.search(r"\b" + re.escape(m) + r"\b", texto_lower):
+            marcas.append(m.title() if m not in ("aws", "ibm", "hpe", "hp", "apc") else m.upper())
+    marcas_str = ", ".join(sorted(set(marcas)))
+
+    # 2. Plazo de entrega o ejecución
+    plazo_str = ""
+    plazo_m = re.search(
+        r"(?:plazo\s*(?:de\s*(?:entrega|ejecuci[oó]n|servicio))?[^\n\r\.\;]{0,40}?)"
+        r"(\d+)\s*(?:d[ií]as\s*(?:calendario|h[aá]biles|habiles)?)",
+        texto_tdr, re.IGNORECASE
     )
-    if not any(_contiene_frase(texto_inicial, frase) for frase in (
-        "nube", "cloud", "iaas", "paas", "google workspace", "microsoft 365",
-        "office 365", "exchange online", "correo electronico en la nube", "mensajeria electronica"
-    )):
-        return oportunidad
+    if plazo_m:
+        plazo_str = f"{plazo_m.group(1)} días"
+        if "habil" in plazo_m.group(0).lower() or "hábil" in plazo_m.group(0).lower():
+            plazo_str += " hábiles"
+        else:
+            plazo_str += " calendario"
+
+    # 3. Garantía comercial
+    garantia_str = ""
+    garantia_m = re.search(
+        r"(?:garant[íi]a[^\n\r\.\;]{0,40}?)"
+        r"(\d+)\s*(meses|a[ñn]os|mes|a[ñn]o)",
+        texto_tdr, re.IGNORECASE
+    )
+    if garantia_m:
+        garantia_str = f"{garantia_m.group(1)} {garantia_m.group(2)}"
+
+    # 4. Perfiles técnicos y certificaciones
+    CERTS = [
+        "ccna", "ccnp", "ccie", "nse 4", "nse 7", "nse 8", "nse4", "nse7",
+        "pcnse", "itil", "pmp", "scrum", "iso 27001", "ceh", "cisa", "cism",
+        "aws certified", "azure certified", "vmware certified", "vcp",
+    ]
+    certs_encontradas = []
+    for c in CERTS:
+        if re.search(r"\b" + re.escape(c) + r"\b", texto_lower):
+            certs_encontradas.append(c.upper())
+    certs_str = ", ".join(sorted(set(certs_encontradas)))
+
+    # 5. Alertas de riesgo o barreras de entrada
+    alertas = []
+    if re.search(r"visita\s*t[eé]cnica", texto_lower):
+        alertas.append("⚠️ Visita técnica previa")
+    if re.search(r"carta\s*(?:de\s*)?(?:respaldo|autorizaci[oó]n|distribuidor|fabricante)", texto_lower):
+        alertas.append("⚠️ Carta de fabricante requerida")
+    if re.search(r"experiencia\s*(?:del\s*postor\s*)?(?:acumulada|m[íi]nima)", texto_lower):
+        alertas.append("ℹ️ Experiencia mínima obligatoria")
+    if re.search(r"penalidad\s*por\s*mora", texto_lower):
+        alertas.append("ℹ️ Penalidad por mora")
+    alertas_str = " | ".join(alertas)
+
+    # 6. Síntesis comercial estructurada
+    partes_resumen = []
+    if marcas_str:
+        partes_resumen.append(f"Marcas: {marcas_str}")
+    if plazo_str:
+        partes_resumen.append(f"Plazo: {plazo_str}")
+    if garantia_str:
+        partes_resumen.append(f"Garantía: {garantia_str}")
+    if certs_str:
+        partes_resumen.append(f"Certs: {certs_str}")
+    if alertas_str:
+        partes_resumen.append(f"Condiciones: {alertas_str}")
+
+    resumen_sintetico = ". ".join(partes_resumen) if partes_resumen else "TDR estándar sin requerimientos restrictivos."
+
+    # Si hay API Key de Gemini, generamos síntesis inteligente en lenguaje natural
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    if gemini_key and len(texto_tdr) > 100:
+        try:
+            prompt = (
+                f"Actúa como un KAM Comercial de TI en Perú. Resume en 2 oraciones concisas este TDR: "
+                f"1) Qué solicitan exactamente y en qué plazo/garantía, 2) Si favorece a alguna marca o impone restricciones:\n\n"
+                f"{texto_tdr[:3500]}"
+            )
+            url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+            req = urllib.request.Request(
+                url_gemini,
+                data=json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data_gemini = json.load(resp)
+                texto_ia = data_gemini["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if texto_ia:
+                    resumen_sintetico = f"{texto_ia} (Síntesis IA)"
+        except Exception:
+            pass
+
+    return {
+        "tdr_marcas": marcas_str,
+        "tdr_plazo": plazo_str,
+        "tdr_garantia": garantia_str,
+        "tdr_certificaciones": certs_str,
+        "tdr_alertas_riesgo": alertas_str,
+        "tdr_resumen_ia": resumen_sintetico,
+    }
+
+
+def enriquecer_decision_con_bases(oportunidad: dict, max_mb: int = 25, max_paginas: int = 150) -> dict:
+    """Lee el PDF de bases/TDR para confirmar la política GCP y extraer inteligencia técnica comercial."""
     documentos = oportunidad.get("documentos_bases") or []
     if isinstance(documentos, str):
         try:
@@ -558,36 +696,46 @@ def enriquecer_decision_con_bases(oportunidad: dict, max_mb: int = 25, max_pagin
     candidatos.sort(key=lambda doc: (
         "bases integradas" in normalizar(doc.get("titulo", "")),
         "bases" in normalizar(doc.get("titulo", "")),
+        "tdr" in normalizar(doc.get("titulo", "")),
         doc.get("fecha", ""),
     ), reverse=True)
     if not candidatos:
-        oportunidad["lectura_bases"] = "REVISIÓN PENDIENTE: OECE no publicó bases PDF accesibles"
-        if oportunidad.get("decision_comercial") == "EVALUAR" and oportunidad.get("proveedor_nube_detectado") == "No identificado":
-            oportunidad["decision_comercial"] = "REVISAR BASES"
+        if any(_contiene_frase(normalizar(f"{oportunidad.get('titulo','')} {oportunidad.get('descripcion','')}"), f) for f in ("nube", "cloud", "iaas")):
+            oportunidad["lectura_bases"] = "REVISIÓN PENDIENTE: OECE no publicó bases PDF accesibles"
+            if oportunidad.get("decision_comercial") == "EVALUAR" and oportunidad.get("proveedor_nube_detectado") == "No identificado":
+                oportunidad["decision_comercial"] = "REVISAR BASES"
         return oportunidad
+
     documento = candidatos[0]
     try:
-        from pypdf import PdfReader
-        request = urllib.request.Request(documento["url"], headers=OECE_HEADERS)
-        with urllib.request.urlopen(request, timeout=120) as response:
+        req_headers = HEADERS_SCRAPER if "licitacionesperu" in documento["url"] else OECE_HEADERS
+        request = urllib.request.Request(documento["url"], headers=req_headers)
+        with urllib.request.urlopen(request, timeout=30) as response:
             contenido = response.read(max_mb * 1024 * 1024 + 1)
         if len(contenido) > max_mb * 1024 * 1024:
             raise ValueError(f"PDF supera {max_mb} MB")
-        lector = PdfReader(BytesIO(contenido))
-        texto_bases = " ".join((pagina.extract_text() or "") for pagina in lector.pages[:max_paginas])
-        if not texto_bases.strip():
+
+        texto_bases, total_p = extraer_texto_pdf(contenido, max_paginas=max_paginas)
+        if not texto_bases:
             raise ValueError("PDF sin texto extraíble")
+
+        # 1. Evaluación de política de nube
         politica = evaluar_politica_nube(
             oportunidad.get("titulo", oportunidad.get("descripcion", "")), texto_bases
         )
         oportunidad.update(politica)
-        oportunidad["lectura_bases"] = f"LEÍDO: {documento.get('titulo', 'Bases')} ({min(len(lector.pages), max_paginas)} páginas revisadas)"
+
+        # 2. Análisis inteligente de requerimientos y TDR
+        tdr_info = analizar_tdr_inteligente(texto_bases, oportunidad)
+        oportunidad.update(tdr_info)
+
+        oportunidad["lectura_bases"] = f"LEÍDO: {documento.get('titulo', 'Bases')} ({min(total_p, max_paginas)} pág. revisadas)"
         oportunidad["base_revisada_url"] = documento["url"]
     except Exception as exc:
         oportunidad["lectura_bases"] = f"REVISIÓN PENDIENTE: no se pudo leer {documento.get('titulo', 'el PDF')} ({exc})"
         if oportunidad.get("proveedor_nube_detectado") == "No identificado":
             oportunidad["decision_comercial"] = "REVISAR BASES"
-            oportunidad["motivo_decision"] = "El proceso es de nube y las bases no pudieron leerse automáticamente."
+            oportunidad["motivo_decision"] = "Las bases o TDR no pudieron leerse automáticamente."
     return oportunidad
 
 
@@ -906,6 +1054,19 @@ def descargar_menores_licitacionesperu(fecha_desde: date, fecha_hasta: date | No
 
             politica = evaluar_politica_nube(h1, cubso, docs)
 
+            tdr_info = {}
+            if docs:
+                pdf_doc = next((d for d in docs if d.get("formato") == "PDF" and d.get("url")), None)
+                if pdf_doc:
+                    try:
+                        r_pdf = session.get(pdf_doc["url"], timeout=10)
+                        if r_pdf.status_code == 200 and len(r_pdf.content) > 100:
+                            t_tdr, _ = extraer_texto_pdf(r_pdf.content, max_paginas=50)
+                            if t_tdr:
+                                tdr_info = analizar_tdr_inteligente(t_tdr, {"titulo": h1, "entidad": entidad})
+                    except Exception:
+                        pass
+
             tipo_proc = "Servicio"
             if "bien" in info["texto_row"].lower():
                 tipo_proc = "Bien"
@@ -931,7 +1092,7 @@ def descargar_menores_licitacionesperu(fecha_desde: date, fecha_hasta: date | No
                 "fechaAdjudicacionEstimada": "",
                 "inicioContrato": "",
                 "finContrato": "",
-                "plazo": "",
+                "plazo": tdr_info.get("tdr_plazo", ""),
                 "areaUsuaria": "",
                 "cubo": cubso,
                 "prioridad": "ALTA" if score_final >= 5 else "MEDIA",
@@ -947,6 +1108,12 @@ def descargar_menores_licitacionesperu(fecha_desde: date, fecha_hasta: date | No
                 "decision_comercial": politica.get("decision_comercial", "EVALUAR"),
                 "motivo_decision": politica.get("motivo_decision", ""),
                 "lectura_bases": "TDR disponible para descarga" if docs else "Sin bases",
+                "tdr_marcas": tdr_info.get("tdr_marcas", ""),
+                "tdr_plazo": tdr_info.get("tdr_plazo", ""),
+                "tdr_garantia": tdr_info.get("tdr_garantia", ""),
+                "tdr_certificaciones": tdr_info.get("tdr_certificaciones", ""),
+                "tdr_alertas_riesgo": tdr_info.get("tdr_alertas_riesgo", ""),
+                "tdr_resumen_ia": tdr_info.get("tdr_resumen_ia", "TDR disponible para descarga." if docs else "Sin TDR"),
                 "_agregado_el": datetime.now().strftime("%Y-%m-%d %H:%M"),
                 "_sync_automatico": "SI",
             }
@@ -1445,12 +1612,203 @@ def obtener_eventos_calendario_sheets(sh, dias_cierres=30, dias_contratos=180) -
     return eventos
 
 
+def enviar_telegram_oportunidades(nuevas: list[dict], menores_nuevos: list[dict] = None) -> bool:
+    """Envía un resumen de alertas prioritarias a un chat o canal de Telegram."""
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if not bot_token or not chat_id:
+        return False
+
+    todas = (menores_nuevos or []) + (nuevas or [])
+    if not todas:
+        return False
+
+    validas = [o for o in todas if o.get("decision_comercial") != "DESCARTAR"]
+    if not validas:
+        return False
+
+    url_api = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    cabecera = (
+        f"🚨 <b>KAM Intelligence · {len(validas)} Nuevas Oportunidades TI</b>\n"
+        f"📅 Fecha: {date.today().strftime('%d/%m/%Y')}\n"
+        f"📊 {len(menores_nuevos or [])} Menores (≤8 UIT) | {len(nuevas or [])} Licitaciones\n"
+        f"────────────────────────"
+    )
+
+    try:
+        urllib.request.urlopen(
+            urllib.request.Request(
+                url_api,
+                data=json.dumps({
+                    "chat_id": chat_id,
+                    "text": cabecera,
+                    "parse_mode": "HTML",
+                    "disable_web_page_preview": True,
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            ),
+            timeout=10,
+        )
+    except Exception as exc:
+        log.warning("No se pudo enviar cabecera a Telegram: %s", exc)
+        return False
+
+    for item in validas[:10]:
+        fuente_url = item.get("fuente_url") or item.get("url") or ""
+        enlace_tdr = ""
+        docs = item.get("documentos_bases") or []
+        if isinstance(docs, list) and docs and isinstance(docs[0], dict) and docs[0].get("url"):
+            enlace_tdr = f"\n📥 <a href='{docs[0]['url']}'>Descargar TDR</a>"
+
+        monto = float(item.get("montoReferencial") or item.get("montoAdjudicado") or item.get("monto") or 0)
+        monto_str = f"S/ {monto:,.2f}" if monto > 0 else "Por cotizar (Menor ≤8 UIT)"
+        cierre = item.get("finCotz") or item.get("fecha_cierre") or "No especificado"
+
+        msg = (
+            f"🎯 <b>{html.escape(str(item.get('id', 'PROCESO')))}</b>\n"
+            f"🏛 <b>Entidad:</b> {html.escape(str(item.get('entidad', '')))}\n"
+            f"📦 <b>Objeto:</b> {html.escape(str(item.get('descripcion', item.get('titulo', ''))[:140]))}\n"
+            f"💰 <b>Monto:</b> {monto_str}\n"
+            f"⏰ <b>Cierre cotización:</b> <code>{cierre}</code>\n"
+            f"🏷 <b>Subcategoría:</b> {item.get('subcategoria_ti', item.get('subcategoria', 'TI'))}\n"
+            f"🌐 <a href='{fuente_url}'>Ver Ficha Oficial</a>{enlace_tdr}"
+        )
+        try:
+            urllib.request.urlopen(
+                urllib.request.Request(
+                    url_api,
+                    data=json.dumps({
+                        "chat_id": chat_id,
+                        "text": msg,
+                        "parse_mode": "HTML",
+                        "disable_web_page_preview": True,
+                    }).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                ),
+                timeout=10,
+            )
+            time.sleep(0.3)
+        except Exception as exc:
+            log.warning("Error enviando mensaje individual a Telegram: %s", exc)
+
+    log.info("Alertas prioritarias notificadas a Telegram con éxito.")
+    return True
+
+
+def registrar_heartbeat_daemon(sh, stats: dict, nuevas_menores: int, nuevas_licitaciones: int, duracion_s: float, estado: str = "OK"):
+    """Registra una línea en la hoja 'sync_log' de Google Sheets con el estado de salud del daemon."""
+    if not sh:
+        return
+    try:
+        try:
+            ws = sh.worksheet("sync_log")
+        except Exception:
+            ws = sh.add_worksheet(title="sync_log", rows=500, cols=10)
+            ws.append_row([
+                "timestamp", "estado", "duracion_segundos", "nuevas_menores",
+                "nuevas_licitaciones", "candidatas_totales", "rango_fechas", "version"
+            ])
+
+        rango = f"{stats.get('desde', '')} a {stats.get('hasta', '')}"
+        fila = [
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            estado,
+            round(duracion_s, 1),
+            nuevas_menores,
+            nuevas_licitaciones,
+            stats.get("relevantes", 0),
+            rango,
+            "v3.2-auto",
+        ]
+        ws.append_row(fila, value_input_option="RAW")
+        log.info("Heartbeat registrado en Google Sheets (sync_log): estado %s en %.1fs", estado, duracion_s)
+    except Exception as exc:
+        log.warning("No se pudo registrar heartbeat en Google Sheets: %s", exc)
+
+
+def calcular_radar_renovaciones(registros: list[dict], dias_horizonte: int = 90) -> list[dict]:
+    """Calcula la proyección de vencimientos de contratos para alertar con 90/60/30 días de anticipación."""
+    hoy = date.today()
+    palabras_recurrentes = [
+        "suscripcion", "suscripción", "licencia", "licenciamiento", "soporte",
+        "mantenimiento", "alquiler", "arrendamiento", "enlace", "servicio de internet",
+        "central telefonica", "telefonía", "renovacion", "renovación", "monitoreo",
+        "seguridad gestionada", "mesa de ayuda"
+    ]
+    renovaciones = []
+    vistos = set()
+    for r in registros:
+        id_reg = str(r.get("id", ""))
+        desc = str(r.get("descripcion", r.get("titulo", ""))).lower()
+        if not any(p in desc for p in palabras_recurrentes):
+            continue
+
+        pub_str = str(r.get("publicado", r.get("fecha_publicacion", "")))[:10]
+        fin_contrato = str(r.get("finContrato", r.get("fin_contrato", "")))[:10]
+
+        fecha_base = None
+        if fin_contrato and re.match(r"^\d{4}-\d{2}-\d{2}$", fin_contrato):
+            try:
+                fecha_base = datetime.strptime(fin_contrato, "%Y-%m-%d").date()
+            except ValueError:
+                pass
+        elif pub_str and re.match(r"^\d{4}-\d{2}-\d{2}$", pub_str):
+            try:
+                pub_date = datetime.strptime(pub_str, "%Y-%m-%d").date()
+                fecha_base = pub_date + timedelta(days=365)
+                while fecha_base < hoy - timedelta(days=45):
+                    fecha_base += timedelta(days=365)
+            except ValueError:
+                pass
+
+        if not fecha_base:
+            continue
+
+        dias = (fecha_base - hoy).days
+        if -45 <= dias <= dias_horizonte:
+            clave = (r.get("entidad", ""), id_reg)
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+
+            if dias <= 0:
+                etapa = "🔴 VENCIDO / EN COTIZACIÓN AHORA"
+                accion = "Verificar si ya publicaron menor en SEACE o contactar con urgencia."
+            elif dias <= 30:
+                etapa = "🔴 URGENTE (<30d)"
+                accion = "TDR en fase final. Solicitar reunión técnica para presentar propuesta."
+            elif dias <= 60:
+                etapa = "🟡 CONTACTO PREVIO (30-60d)"
+                accion = "Área usuaria definiendo especificaciones. Momento clave para influenciar TDR."
+            else:
+                etapa = "🟢 PLANIFICACIÓN ESTRATÉGICA (60-90d)"
+                accion = "Enviar dossier corporativo y coordinar demo o PoC técnica."
+
+            renovaciones.append({
+                "id": id_reg,
+                "entidad": r.get("entidad", ""),
+                "descripcion": r.get("descripcion", r.get("titulo", "")),
+                "subcategoria": r.get("subcategoria_ti", r.get("subcategoria", "TI")),
+                "proveedor_anterior": r.get("proveedor", "No registrado"),
+                "fecha_proyectada": fecha_base.isoformat(),
+                "dias_restantes": dias,
+                "etapa": etapa,
+                "accion_sugerida": accion,
+                "fuente_url": r.get("fuente_url", r.get("url", "")),
+            })
+
+    renovaciones.sort(key=lambda x: x["dias_restantes"])
+    return renovaciones
+
+
 def main():
+    t_inicio = time.time()
     parser = argparse.ArgumentParser(description="Sincroniza oportunidades TI oficiales de OECE y Contrataciones Menores")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--local", action="store_true", help="Guarda en licitaciones.json en vez de Google Sheets")
     parser.add_argument("--fecha", type=str, default=None)
     parser.add_argument("--dias", type=int, default=7)
+    parser.add_argument("--max-paginas", type=int, default=2)
     parser.add_argument("--releer-historico", action="store_true",
                         help="Completa clasificación oficial OCDS de filas existentes en Google Sheets")
     parser.add_argument("--max-registros-historico", type=int, default=200)
@@ -1460,7 +1818,19 @@ def main():
                         help="No envía el resumen de calendario; útil para sincronizaciones frecuentes")
     parser.add_argument("--sin-email", action="store_true",
                         help="No envía correos electrónicos de nuevas oportunidades detectadas")
+    parser.add_argument("--radar-renovaciones", action="store_true",
+                        help="Calcula el radar predictivo de renovaciones de contratos (anticipación 90/60/30 días)")
     args = parser.parse_args()
+
+    if args.radar_renovaciones:
+        sh = conectar_sheets()
+        todos = sh.worksheet("procesos").get_all_records() + sh.worksheet("licitaciones").get_all_records()
+        radar = calcular_radar_renovaciones(todos, dias_horizonte=90)
+        log.info("Radar Predictivo de Renovaciones: %d contratos próximos a vencer", len(radar))
+        for r in radar[:25]:
+            log.info("[%s] %s (%d d) | %s | %s", r["etapa"], r["fecha_proyectada"], r["dias_restantes"], r["entidad"][:28], r["descripcion"][:50])
+        return
+
     if args.releer_historico:
         sh = conectar_sheets()
         total_releidos = 0
@@ -1517,10 +1887,17 @@ def main():
         enviar_email(nuevas, menores_nuevos, dry_run=args.dry_run)
     else:
         log.info("Envío de correo omitido (--sin-email)")
+
+    enviar_telegram_oportunidades(nuevas, menores_nuevos)
+
     if not args.local and not args.sin_alertas_calendario:
         eventos = obtener_eventos_calendario_sheets(sh)
         log.info("Alertas de calendario detectadas: %d", len(eventos))
         enviar_alerta_eventos(eventos, dry_run=args.dry_run)
+
+    duracion = time.time() - t_inicio
+    if not args.local and not args.dry_run:
+        registrar_heartbeat_daemon(sh, stats, len(menores_nuevos), len(nuevas), duracion, "OK")
 
 
 if __name__ == "__main__":
