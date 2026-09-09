@@ -49,11 +49,27 @@ _cargar_env_local()
 
 
 def _url_ficha_oece(ocid, fallback=""):
-    """Devuelve la ficha pública legible; evita exponer el JSON técnico de la API."""
-    ocid = str(ocid or '').strip()
-    if ocid:
-        return f"https://contratacionesabiertas.oece.gob.pe/proceso/{ocid}"
-    return str(fallback or '')
+    """Devuelve la ficha pública legible; prioriza URL directa y evita 404 en contrataciones menores."""
+    fallback_url = str(fallback or '').strip()
+    ocid_str = str(ocid or '').strip()
+
+    # 1. Si fallback es una URL válida (licitacionesperu.pe o SEACE), usarla directamente
+    if fallback_url and (fallback_url.startswith("http://") or fallback_url.startswith("https://")):
+        return fallback_url
+
+    # 2. Si es un OCID estándar de OECE (ocds-...), el enlace oficial es en contratacionesabiertas
+    if ocid_str.lower().startswith("ocds-"):
+        return f"https://contratacionesabiertas.oece.gob.pe/proceso/{ocid_str}"
+
+    # 3. Si es una contratación menor (CM-...)
+    if ocid_str.upper().startswith("CM-") or "CM-" in ocid_str.upper():
+        import urllib.parse
+        return f"https://licitacionesperu.pe/contrataciones-menores/?search={urllib.parse.quote(ocid_str)}"
+
+    # 4. Fallback final
+    if ocid_str:
+        return f"https://contratacionesabiertas.oece.gob.pe/proceso/{ocid_str}"
+    return fallback_url
 
 @st.cache_resource(ttl=300)
 def _get_gsheets_client():
