@@ -53,8 +53,19 @@ def _url_ficha_oece(ocid, fallback=""):
     fallback_url = str(fallback or '').strip()
     ocid_str = str(ocid or '').strip()
 
-    # 1. Si fallback es una URL válida (licitacionesperu.pe o SEACE), usarla directamente
+    # Normalizar si fallback es una URL de la API OCDS (convertirla a la vista pública HTML)
+    if "/api/v1/record/" in fallback_url:
+        fallback_url = fallback_url.replace("/api/v1/record/", "/proceso/")
+    elif "/api/" in fallback_url and "contratacionesabiertas.oece.gob.pe" in fallback_url:
+        import re
+        fallback_url = re.sub(r'/api/v\d+/record/', '/proceso/', fallback_url)
+
+    # 1. Si fallback es una URL válida (licitacionesperu.pe o SEACE o OECE proceso)
     if fallback_url and (fallback_url.startswith("http://") or fallback_url.startswith("https://")):
+        # Si por error se guardó una URL de OECE para una contratación menor (CM-...), evitar el 404 de OECE
+        if "contratacionesabiertas.oece.gob.pe" in fallback_url and (ocid_str.upper().startswith("CM-") or "CM-" in fallback_url.upper()):
+            import urllib.parse
+            return f"https://licitacionesperu.pe/contrataciones-menores/?search={urllib.parse.quote(ocid_str)}"
         return fallback_url
 
     # 2. Si es un OCID estándar de OECE (ocds-...), el enlace oficial es en contratacionesabiertas
@@ -1889,7 +1900,7 @@ if seccion == "🔎 Procesos OECE":
                 'Inicio contrato': row.get('inicioContrato', ''),
                 'Fin contrato': row.get('finContrato', ''),
                 'OCID': row.get('ocid', ''),
-                'Fuente oficial': _url_ficha_oece(row.get('ocid', ''), row.get('fuente_url', '')),
+                'Fuente oficial': _url_ficha_oece(row.get('ocid') or row.get('id', ''), row.get('fuente_url', '')),
             })
     if not df_licitaciones.empty and 'fuente' in df_licitaciones.columns:
         for _, row in df_licitaciones[df_licitaciones['fuente'].astype(str).str.contains('OECE', case=False, na=False)].iterrows():
@@ -1910,7 +1921,7 @@ if seccion == "🔎 Procesos OECE":
                 'Inicio contrato': row.get('inicio_contrato', ''),
                 'Fin contrato': row.get('fin_contrato', ''),
                 'OCID': row.get('ocid', ''),
-                'Fuente oficial': _url_ficha_oece(row.get('ocid', ''), row.get('fuente_url', '')),
+                'Fuente oficial': _url_ficha_oece(row.get('ocid') or row.get('id', ''), row.get('fuente_url', '')),
             })
 
     df_oece = pd.DataFrame(filas_oece)
@@ -1981,7 +1992,7 @@ elif seccion == "🆕 Últimos 7 días":
                 'Monto referencial': row.get('montoReferencial', 0),
                 'Monto adjudicado': row.get('montoAdjudicado', 0),
                 'Ganador': row.get('proveedor', ''),
-                'Fuente oficial': _url_ficha_oece(row.get('ocid', ''), row.get('fuente_url', '')),
+                'Fuente oficial': _url_ficha_oece(row.get('ocid') or row.get('id', ''), row.get('fuente_url', '')),
                 'Nube detectada': row.get('proveedor_nube_detectado', '') or politica_nube['proveedor_nube_detectado'],
                 'Decisión': row.get('decision_comercial', '') or politica_nube['decision_comercial'],
                 'Motivo': row.get('motivo_decision', '') or politica_nube['motivo_decision'],
@@ -2001,7 +2012,7 @@ elif seccion == "🆕 Últimos 7 días":
                 'Monto referencial': row.get('monto_base', 0),
                 'Monto adjudicado': row.get('monto_adjudicado', 0),
                 'Ganador': row.get('ganador', ''),
-                'Fuente oficial': _url_ficha_oece(row.get('ocid', ''), row.get('fuente_url', '')),
+                'Fuente oficial': _url_ficha_oece(row.get('ocid') or row.get('id', ''), row.get('fuente_url', '')),
                 'Nube detectada': row.get('proveedor_nube_detectado', '') or politica_nube['proveedor_nube_detectado'],
                 'Decisión': row.get('decision_comercial', '') or politica_nube['decision_comercial'],
                 'Motivo': row.get('motivo_decision', '') or politica_nube['motivo_decision'],
