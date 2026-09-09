@@ -21,16 +21,47 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from io import BytesIO
 
+import requests
+from bs4 import BeautifulSoup
+
 API_BASE = "https://contratacionesabiertas.oece.gob.pe/api/v1"
+
 SPREADSHEET_ID = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
 HOJA_LICITACIONES = "licitaciones"
 HOJA_SYNC_LOG = "sync_log"
-UIT_POR_ANIO = {2025: 5350, 2026: 5500}
+# Términos que DESCARTAN un proceso automáticamente
+TERMINOS_EXCLUIR = [
+    "ejecucion de obra","elaboracion de expediente tecnico","supervision de obra",
+    "construccion de","mejoramiento de infraestructura vial","pavimentacion",
+    "asfaltado","pista atletica","grass deportivo","estadio","losa deportiva",
+    "campo deportivo","parque","plaza","vereda","puente","carretera",
+    "camino vecinal","trocha carrozable","canal de riego","sistema de riego",
+    "agua potable","alcantarillado","saneamiento","residuos solidos",
+    "relleno sanitario","planta de tratamiento","construccion de colegio",
+    "construccion de escuela","construccion de hospital","construccion de posta",
+    "mejoramiento de infraestructura educativa","mejoramiento de infraestructura fisica",
+    "semovientes","ganado","vaquillona","ovino","alpaca","camelido",
+    "maquinaria agricola","tractor","cosechadora","semilla","fertilizante",
+    "tuberia","geomembrana","acero","cemento","ladrillo","madera",
+    "ambulancia","camion","volquete","retroexcavadora",
+    "servicio de limpieza","servicio de seguridad fisica","vigilancia fisica",
+    "servicio de alimentacion","catering","lavanderia",
+    "mantenimiento de jardines","podado","fumigacion",
+    "transporte de personal","courier",
+    "correo fisico y mensajeria nacional", "servicio de mensajeria fisica local",
+    "servicio de mensajeria fisica nacional", "mensajeria fisica", "servicio courier",
+    "servicio postal", "distribucion fisica de documentos",
+    "reparacion de analizador", "analizador de presion", "equipo medico",
+    "transporte de carga",
+]
 
-def _cargar_env_local(ruta=".env"):
+_DIR_BASE = os.path.dirname(os.path.abspath(__file__))
+
+
+def _cargar_env_local(ruta=None):
     """Carga secretos locales ignorados por Git, sin reemplazar variables ya definidas."""
-    if not os.path.isabs(ruta):
-        ruta = os.path.join(os.path.dirname(os.path.abspath(__file__)), ruta)
+    if ruta is None:
+        ruta = os.path.join(_DIR_BASE, ".env")
     if not os.path.exists(ruta):
         return
     with open(ruta, encoding="utf-8") as archivo:
@@ -51,33 +82,65 @@ GMAIL_APP_PASS = os.environ.get("GMAIL_APP_PASS", "")
 
 # Una consulta por grupo reduce llamadas; el filtro de puntuación decide la relevancia final.
 TERMINOS_BUSQUEDA = [
-    "nube", "cloud", "correo electronico", "google workspace", "microsoft 365",
-    "ciberseguridad", "firewall", "backup", "software", "hosting", "servidor",
-    "almacenamiento", "base de datos", "videoconferencia", "inteligencia artificial",
-    "mesa de ayuda", "saas", "devops", "switch", "router", "wifi", "access point",
-    "rack", "cableado estructurado", "fibra optica", "ups", "videovigilancia",
-    "sd-wan", "gpon", "pantalla interactiva", "pizarra interactiva",
-    "computadora", "laptop", "impresora", "escáner", "equipamiento informatico",
-    "licenciamiento", "seguridad informatica", "soporte tecnico", "data center",
-    "analitica de datos", "business intelligence", "transformacion digital",
-    "desarrollo de software", "digitalizacion", "firma digital", "telefonia ip",
-    "elaboracion de expediente tecnico", "supervision de expediente tecnico",
-    "elaboracion de software", "construccion de videovigilancia",
+    # Nube, Infraestructura y Servidores
+    "nube", "cloud", "saas", "iaas", "paas", "hosting", "servidor", "servidores",
+    "data center", "centro de datos", "sala de servidores", "virtualizacion",
+    "almacenamiento", "storage", "almacenamiento san", "almacenamiento nas", "backup",
+    # Correo, Colaboración y Telefonía
+    "correo electronico", "google workspace", "microsoft 365", "office 365",
+    "central telefonica", "colaboracion", "comunicaciones unificadas", "contact center",
+    "telefonia ip", "telefonia", "voip", "videoconferencia",
+    # Ciberseguridad, Redes y Comunicaciones
+    "ciberseguridad", "seguridad informatica", "seguridad perimetral", "firewall",
+    "antivirus", "edr", "waf", "soc", "siem", "fortinet", "palo alto", "cisco",
+    "switch", "switches", "router", "routers", "wifi", "access point",
+    "enlace de datos", "internet dedicado", "enlace de internet", "red lan", "red wan",
+    "sd-wan", "gpon", "cableado estructurado", "fibra optica", "rack", "ups",
+    # Software, Licenciamiento y Desarrollo
+    "software", "licenciamiento", "licencias", "renovacion de licencias",
+    "suscripcion", "suscripcion en la nube", "desarrollo de software", "fabrica de software",
+    "sistema de informacion", "sistema web", "aplicacion web", "aplicativo movil",
+    "base de datos", "oracle", "sql server", "postgresql", "devops",
+    # Cómputo, Periféricos y Audiovisual
+    "computadora", "computadoras", "laptop", "laptops", "equipos de computo",
+    "estacion de trabajo", "workstation", "all in one", "tablets", "impresora", "escáner",
+    "equipamiento informatico", "pantalla interactiva", "pizarra interactiva",
+    # Servicios Gestionados y Soporte
+    "soporte tecnico", "soporte informatico", "servicio informatico", "servicios informaticos",
+    "mesa de ayuda", "mesa de servicios", "service desk", "help desk", "outsourcing ti",
+    "mantenimiento de equipos de computo", "mantenimiento de servidores",
+    # Datos, Inteligencia y Transformación
+    "inteligencia artificial", "analitica de datos", "business intelligence", "power bi",
+    "transformacion digital", "digitalizacion", "firma digital", "certificado digital",
+    "gestion documental", "tramite documentario", "gobierno digital",
+    "auditoria de sistemas", "seguridad de la informacion", "sgsi",
+    # Videovigilancia y Seguridad Ciudadana
+    "videovigilancia", "video vigilancia", "camaras de seguridad", "cctv",
+    "construccion de videovigilancia", "expediente tecnico videovigilancia",
+    "expediente tecnico seguridad ciudadana",
 ]
 
 REGLAS_TI = {
     "Correo/Colaboración": {
-        3: ["google workspace", "microsoft 365", "office 365", "exchange online", "correo electronico en la nube"],
-        2: ["correo electronico", "correo institucional", "correo corporativo", "colaboracion", "mensajeria electronica", "smtp"],
+        3: [
+            "google workspace", "microsoft 365", "office 365", "exchange online",
+            "correo electronico en la nube", "central telefonica en nube", "central telefonica virtual",
+            "plataforma de colaboracion", "colaboracion en nube", "comunicaciones unificadas",
+            "central telefonica ip", "telefonia ip",
+        ],
+        2: [
+            "correo electronico", "correo institucional", "correo corporativo", "colaboracion",
+            "mensajeria electronica", "central telefonica", "telefonia en la nube", "sip trunk", "voip", "smtp",
+        ],
     },
     "Nube": {
-        3: ["amazon web services", "google cloud", "oracle cloud", "azure", "multinube", "cloud computing"],
-        2: ["infraestructura en nube", "infraestructura cloud", "nube publica", "nube privada", "servicio en la nube"],
+        3: ["amazon web services", "google cloud", "oracle cloud", "azure", "multinube", "cloud computing", "plataforma en la nube"],
+        2: ["infraestructura en nube", "infraestructura cloud", "nube publica", "nube privada", "servicio en la nube", "servicios basados en la nube"],
         1: ["cloud", "nube", "iac"],
     },
     "Seguridad Web": {
-        3: ["cloudflare", "firewall de aplicaciones", "waf", "ciberseguridad", "seguridad perimetral", "antiddos", "antispam", "gestion unificada de amenazas"],
-        2: ["seguridad informatica", "seguridad de la informacion", "proteccion de correo", "endpoint", "firewall", "utm"],
+        3: ["cloudflare", "firewall de aplicaciones", "waf", "ciberseguridad", "seguridad perimetral", "antiddos", "antispam", "gestion unificada de amenazas", "edr", "xdr", "siem", "soc"],
+        2: ["seguridad informatica", "seguridad de la informacion", "proteccion de correo", "endpoint", "firewall", "utm", "antivirus corporativo"],
         1: ["vpn", "antivirus", "zero trust"],
     },
     "Backup": {
@@ -85,10 +148,18 @@ REGLAS_TI = {
         2: ["copias de respaldo", "contingencia", "backup", "respaldo de datos"],
     },
     "Software": {
-        3: ["software como servicio", "saas", "licencia de software", "suscripcion de software", "atlassian"],
-        2: ["licenciamiento", "licencias de software", "plataforma digital", "sistema de informacion", "mesa de ayuda"],
+        3: [
+            "software como servicio", "saas", "licencia de software", "suscripcion de software",
+            "suscripcion en la nube", "suscripcion para plataforma", "suscripcion de licencias",
+            "atlassian", "renovacion de licencias", "renovacion de soporte y licencias",
+        ],
+        2: [
+            "licenciamiento", "licencias de software", "plataforma digital", "sistema de informacion",
+            "mesa de ayuda", "mesa de servicios", "service desk", "suscripcion",
+        ],
         1: ["software", "aplicacion web", "sistema web", "helpdesk", "erp", "crm"],
     },
+
     "Infraestructura": {
         3: ["gabinete de comunicaciones", "gabinete de datos", "rack de comunicaciones", "rack de servidores"],
         2: ["servidor", "almacenamiento", "storage", "base de datos", "datacenter", "centro de datos", "virtualizacion", "gabinete rack"],
@@ -149,9 +220,12 @@ REGLAS_TI = {
         1: ["soporte tecnico", "mantenimiento preventivo", "help desk", "itil"],
     },
     "Telecomunicaciones y Voz": {
-        3: ["telefonia ip", "central telefonica ip", "comunicaciones unificadas", "enlace de datos"],
-        2: ["internet dedicado", "enlace dedicado", "sip trunk", "contact center", "call center"],
-        1: ["voip", "anexo ip", "telefono ip", "mpls"],
+        3: [
+            "telefonia ip", "central telefonica ip", "central telefonica en nube", "central telefonica virtual",
+            "central telefonica", "comunicaciones unificadas", "enlace de datos", "telefonia en la nube",
+        ],
+        2: ["internet dedicado", "enlace dedicado", "enlace de internet", "sip trunk", "contact center", "call center"],
+        1: ["voip", "anexo ip", "telefono ip", "mpls", "telefonia"],
     },
     "Identidad y Firma Digital": {
         3: ["gestion de identidades", "firma digital", "certificado digital", "autenticacion multifactor"],
@@ -169,9 +243,17 @@ REGLAS_TI = {
         1: ["capacitacion informatica", "taller tecnologico"],
     },
     "Expedientes Técnicos y Supervisión": {
-        3: ["elaboracion de expediente tecnico", "elaboracion del expediente tecnico", "supervision de elaboracion de expediente tecnico", "supervision de la elaboracion del expediente tecnico", "consultoria para expediente tecnico", "consultoria para la elaboracion del expediente tecnico", "expediente de saldo de obra"],
-        2: ["revision de expediente tecnico", "evaluacion de expediente tecnico", "actualizacion de expediente tecnico", "supervision de expediente tecnico", "saldo de obra"],
-        1: ["expediente tecnico"],
+        3: [
+            "expediente tecnico de videovigilancia", "expediente tecnico videovigilancia",
+            "expediente tecnico de seguridad ciudadana", "expediente tecnico de centro de datos",
+            "expediente tecnico datacenter", "expediente tecnico de fibra optica",
+            "expediente tecnico de telecomunicaciones", "supervision de expediente tecnico de videovigilancia",
+        ],
+        2: [
+            "elaboracion de expediente tecnico de videovigilancia", "supervision de expediente tecnico de videovigilancia",
+            "elaboracion de expediente tecnico de comunicaciones", "consultoria para expediente tecnico de ti",
+        ],
+        1: ["expediente tecnico tecnologico", "estudio definitivo de telecomunicaciones"],
     },
     "Videoconferencia": {
         3: ["videoconferencia", "video conferencia", "zoom", "google meet"],
@@ -196,9 +278,6 @@ EXCLUSIONES = [
     "reparacion de analizador", "analizador de presion", "equipo medico",
     "transporte de carga", "servicio de alimentacion", "obra de construccion",
 ]
-# Alias legible para integraciones y pruebas que referencien esta lista por su
-# nombre funcional. Se mantiene una sola fuente de verdad.
-TERMINOS_EXCLUIR = EXCLUSIONES
 
 FAMILIAS_KAM = {
     "Cloud y Colaboración": {"Nube", "Correo/Colaboración", "Backup"},
@@ -216,6 +295,7 @@ FAMILIAS_KAM = {
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
+
 def normalizar(texto) -> str:
     texto = unicodedata.normalize("NFKD", str(texto or ""))
     return " ".join("".join(c for c in texto if not unicodedata.combining(c)).lower().split())
@@ -231,8 +311,20 @@ def _contiene_frase(texto: str, frase: str) -> bool:
 
 
 def _es_excluido(texto: str) -> bool:
-    """Indica si el texto contiene una exclusión comercial como término completo."""
-    return any(_contiene_frase(texto, termino) for termino in TERMINOS_EXCLUIR)
+    """Descarta obras civiles, ganadería, mensajería física y otros procesos no-TI."""
+    t = normalizar(texto)
+    if any(_contiene_frase(t, frase) for frase in EXCLUSIONES):
+        return True
+    terminos_ti_fuertes = (
+        "videovigilancia", "video vigilancia", "cctv", "camara ip", "camaras de seguridad",
+        "centro de datos", "datacenter", "fibra optica", "cableado estructurado",
+        "software", "sistema de informacion", "telecomunicaciones", "servidores",
+        "servidor", "ciberseguridad", "correo electronico", "central telefonica",
+        "nube", "cloud", "computadora", "laptop", "antivirus", "switch", "router"
+    )
+    if any(_contiene_frase(t, ti) for ti in terminos_ti_fuertes):
+        return False
+    return any(ex in t for ex in TERMINOS_EXCLUIR)
 
 
 def familia_kam(subcategoria: str) -> str:
@@ -246,7 +338,7 @@ def familia_kam(subcategoria: str) -> str:
 def evaluar_relevancia(titulo: str, descripcion: str = "") -> tuple[int, str, list[str]]:
     texto = normalizar(f"{titulo} {descripcion}")
     if _es_excluido(texto):
-        return 0, "No TI", ["exclusión comercial"]
+        return 0, "No TI", ["exclusión comercial o de obra civil"]
     puntos_por_categoria = {}
     coincidencias_por_categoria = {}
     for categoria, reglas in REGLAS_TI.items():
@@ -658,14 +750,258 @@ def separar_por_cuantia(oportunidades: list[dict]) -> tuple[list[dict], list[dic
     return menores, licitaciones
 
 
+HEADERS_SCRAPER = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-PE,es;q=0.9,en;q=0.8",
+}
+
+TERMINOS_MENORES = [
+    "nube", "cloud", "software", "correo electronico", "ciberseguridad",
+    "servidor", "licenciamiento", "soporte tecnico", "central telefonica",
+    "videovigilancia", "cableado estructurado", "fibra optica", "switch",
+    "ups", "datacenter", "impresora", "computadora", "laptop",
+    "digitalizacion", "firma digital", "colaboracion", "suscripcion",
+    "telefonia", "antivirus", "redes", "storage", "helpdesk", "equipamiento informatico",
+]
+
+
+def descargar_menores_licitacionesperu(fecha_desde: date, fecha_hasta: date | None = None,
+                                       max_paginas: int = 2,
+                                       terminos: list[str] | None = None) -> list[dict]:
+    """Busca contrataciones menores directas (≤8 UIT) en licitacionesperu.pe."""
+    fecha_hasta = fecha_hasta or date.today()
+    terminos = terminos or TERMINOS_MENORES
+    candidatos = {}
+
+    session = requests.Session()
+    session.headers.update(HEADERS_SCRAPER)
+
+    for idx, termino in enumerate(terminos, 1):
+        if idx % 5 == 1 or idx == len(terminos):
+            log.info("Buscando menores en licitacionesperu [%d/%d]: '%s' (candidatos: %d)", idx, len(terminos), termino, len(candidatos))
+        for page in range(1, max_paginas + 1):
+            url = f"https://licitacionesperu.pe/contrataciones-menores/?search={urllib.parse.quote(termino)}&page={page}"
+            try:
+                resp = session.get(url, timeout=12)
+                if resp.status_code != 200:
+                    break
+                soup = BeautifulSoup(resp.text, "html.parser")
+                rows = soup.find_all("div", class_="res-row")
+                if not rows:
+                    break
+
+                termino_agotado = False
+                for row in rows:
+                    link_tag = row.find("a", href=re.compile(r"/contrataciones-menores/\d+/"))
+                    if not link_tag:
+                        continue
+                    href = link_tag.get("href", "")
+                    match_id = re.search(r"/contrataciones-menores/(\d+)/", href)
+                    if not match_id:
+                        continue
+                    id_num = match_id.group(1)
+                    if id_num in candidatos:
+                        continue
+
+                    texto_row = row.get_text(separator=" | ", strip=True)
+                    match_fecha = re.search(r"(\d{2}/\d{2}/\d{4})", texto_row)
+                    fecha_pub_date = None
+                    if match_fecha:
+                        try:
+                            fecha_pub_date = datetime.strptime(match_fecha.group(1), "%d/%m/%Y").date()
+                        except ValueError:
+                            pass
+
+                    if fecha_pub_date and not (fecha_desde <= fecha_pub_date <= fecha_hasta):
+                        if fecha_pub_date < fecha_desde:
+                            termino_agotado = True
+                            break
+                        continue
+
+                    titulo = link_tag.get_text(strip=True)
+                    score, subcategoria, _ = evaluar_relevancia(titulo, texto_row)
+                    if score >= 3:
+                        candidatos[id_num] = {
+                            "id_num": id_num,
+                            "href": href,
+                            "titulo": titulo,
+                            "texto_row": texto_row,
+                            "fecha_pub": fecha_pub_date.isoformat() if fecha_pub_date else "",
+                            "score_ti": score,
+                            "subcategoria": subcategoria,
+                        }
+                if termino_agotado:
+                    break
+            except Exception as exc:
+                log.warning("Error consultando licitacionesperu para '%s' pag %d: %s", termino, page, exc)
+                break
+
+    def cargar_detalle_menor(info: dict) -> dict | None:
+        url_detalle = f"https://licitacionesperu.pe{info['href']}"
+        try:
+            resp = session.get(url_detalle, timeout=12)
+            if resp.status_code != 200:
+                return None
+            s = BeautifulSoup(resp.text, "html.parser")
+            kicker = s.find("div", class_="kicker")
+            id_proceso = kicker.get_text(strip=True) if kicker and kicker.get_text(strip=True) else f"CM-{info['id_num']}"
+
+            h1 = s.find("h1").get_text(strip=True) if s.find("h1") else info["titulo"]
+
+            dhero = s.find("div", class_="dhero-entity")
+            spans = [span.get_text(strip=True) for span in dhero.find_all("span")] if dhero else []
+            entidad = spans[0] if len(spans) > 0 else ""
+            ubicacion = spans[1] if len(spans) > 1 else ""
+            fecha_pub_raw = spans[2] if len(spans) > 2 else ""
+
+            partes_ub = [p.strip() for p in ubicacion.split("/")] if ubicacion else []
+            region = partes_ub[0] if len(partes_ub) > 0 else ""
+            localidad = partes_ub[-1] if len(partes_ub) > 1 else ""
+
+            fecha_pub = info["fecha_pub"]
+            if fecha_pub_raw:
+                try:
+                    fecha_pub = datetime.strptime(fecha_pub_raw, "%d/%m/%Y").date().isoformat()
+                except Exception:
+                    pass
+
+            text_all = s.get_text()
+            cotiz = re.search(
+                r"ETAPA DE COTIZACI[ÓO]N.*?([0-9]{2}/[0-9]{2}/[0-9]{4})\s*→\s*([0-9]{2}/[0-9]{2}/[0-9]{4})",
+                text_all, re.DOTALL
+            )
+            fin_cotz = ""
+            if cotiz:
+                try:
+                    fin_cotz = datetime.strptime(cotiz.group(2), "%d/%m/%Y").date().isoformat()
+                except Exception:
+                    fin_cotz = cotiz.group(2)
+
+            cubso_match = re.search(r"CUBSO:\s*([^\n\r|]+)", text_all)
+            cubso = cubso_match.group(1).strip() if cubso_match else ""
+
+            docs = []
+            doc_section = s.find("div", id="documentos")
+            if doc_section:
+                for row in doc_section.find_all("div", class_="doc-row"):
+                    name_el = row.find("div", class_="doc-name")
+                    meta_el = row.find("div", class_="doc-meta")
+                    a_el = row.find("a", href=True)
+                    if a_el:
+                        docs.append({
+                            "titulo": name_el.get_text(strip=True) if name_el else a_el.get_text(strip=True),
+                            "descripcion": meta_el.get_text(strip=True) if meta_el else "",
+                            "url": f"https://licitacionesperu.pe{a_el['href']}" if a_el["href"].startswith("/") else a_el["href"],
+                            "formato": "PDF" if ".pdf" in a_el["href"].lower() or (meta_el and "pdf" in meta_el.text.lower()) else "DOCX",
+                        })
+
+            score_final, subcat_final, _ = evaluar_relevancia(f"{h1} {cubso}", entidad)
+            if score_final < 3:
+                score_final = info["score_ti"]
+                subcat_final = info["subcategoria"]
+
+            politica = evaluar_politica_nube(h1, cubso, docs)
+
+            tipo_proc = "Servicio"
+            if "bien" in info["texto_row"].lower():
+                tipo_proc = "Bien"
+
+            return {
+                "id": id_proceso,
+                "entidad": entidad,
+                "region": region,
+                "localidad": localidad,
+                "descripcion": h1,
+                "categoria": "TI",
+                "subcategoria": subcat_final,
+                "estado": "En Evaluación",
+                "resultadoAdjudicacion": "En Evaluación",
+                "proveedor": "",
+                "ruc": "",
+                "montoAdjudicado": 0,
+                "montoReferencial": 0,
+                "moneda": "PEN",
+                "publicado": fecha_pub,
+                "inicioCotz": fecha_pub,
+                "finCotz": fin_cotz or fecha_pub,
+                "fechaAdjudicacionEstimada": "",
+                "inicioContrato": "",
+                "finContrato": "",
+                "plazo": "",
+                "areaUsuaria": "",
+                "cubo": cubso,
+                "prioridad": "ALTA" if score_final >= 5 else "MEDIA",
+                "oportunidad": f"Contratación menor {subcat_final} detectada en licitacionesperu",
+                "tdrDisponible": bool(docs),
+                "tipo": tipo_proc,
+                "ocid": id_proceso,
+                "fuente": "LICITACIONESPERU-MENOR",
+                "fuente_url": url_detalle,
+                "score_ti": score_final,
+                "documentos_bases": docs,
+                "proveedor_nube_detectado": politica.get("proveedor_nube_detectado", "No identificado"),
+                "decision_comercial": politica.get("decision_comercial", "EVALUAR"),
+                "motivo_decision": politica.get("motivo_decision", ""),
+                "lectura_bases": "TDR disponible para descarga" if docs else "Sin bases",
+                "_agregado_el": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "_sync_automatico": "SI",
+            }
+        except Exception as exc:
+            log.warning("No se pudo obtener detalle de menor %s: %s", info["id_num"], exc)
+            return None
+
+    log.info("Obteniendo detalles de %d contrataciones menores candidatas...", len(candidatos))
+    menores = []
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futuros = [executor.submit(cargar_detalle_menor, info) for info in candidatos.values()]
+        for futuro in as_completed(futuros):
+            try:
+                res = futuro.result()
+                if res:
+                    menores.append(res)
+            except Exception as e:
+                log.warning("Error procesando menor: %s", e)
+
+    menores.sort(key=lambda item: (item.get("publicado", ""), item.get("score_ti", 0)), reverse=True)
+    return menores
+
+
 def descargar_oportunidades_oece(fecha_desde: date, fecha_hasta: date | None = None,
-                                 max_paginas: int = 2, page_size: int = 100):
-    oportunidades, stats = descargar_licitaciones_oece(
-        fecha_desde, fecha_hasta, max_paginas=max_paginas, page_size=page_size
-    )
-    menores, licitaciones = separar_por_cuantia(oportunidades)
+                                 max_paginas: int = 2, page_size: int = 100,
+                                 incluir_licitaciones: bool = True,
+                                 incluir_menores_web: bool = True):
+    licitaciones = []
+    stats = {
+        "consultas": 0, "candidatos": 0, "relevantes": 0,
+        "errores_detalle": 0, "desde": fecha_desde.isoformat(),
+        "hasta": (fecha_hasta or date.today()).isoformat(),
+    }
+    menores_oece = []
+    if incluir_licitaciones:
+        oportunidades, stats = descargar_licitaciones_oece(
+            fecha_desde, fecha_hasta, max_paginas=max_paginas, page_size=page_size
+        )
+        menores_oece, licitaciones = separar_por_cuantia(oportunidades)
+
+    menores_web = []
+    if incluir_menores_web:
+        log.info("Buscando contrataciones menores (≤8 UIT) en licitacionesperu.pe...")
+        try:
+            menores_web = descargar_menores_licitacionesperu(fecha_desde, fecha_hasta, max_paginas=max_paginas)
+            log.info("Contrataciones menores encontradas en licitacionesperu.pe: %d", len(menores_web))
+        except Exception as e:
+            log.warning("No se pudo consultar licitacionesperu.pe: %s", e)
+
+    menores = deduplicar_por_id(menores_web + menores_oece)
+    stats["menores_oece"] = len(menores_oece)
+    stats["menores_licitacionesperu"] = len(menores_web)
     stats["menores"] = len(menores)
     stats["licitaciones"] = len(licitaciones)
+    stats["relevantes"] = len(licitaciones) + len(menores)
     return menores, licitaciones, stats
 
 
@@ -742,10 +1078,11 @@ def conectar_sheets():
     import gspread
     from google.oauth2.service_account import Credentials
     creds_dict = None
+    creds_path = os.path.join(_DIR_BASE, "gsheets_credentials.json")
     if os.environ.get("GSHEETS_CREDENTIALS_JSON"):
         creds_dict = json.loads(os.environ["GSHEETS_CREDENTIALS_JSON"])
-    elif os.path.exists("gsheets_credentials.json"):
-        with open("gsheets_credentials.json", encoding="utf-8") as archivo:
+    elif os.path.exists(creds_path):
+        with open(creds_path, encoding="utf-8") as archivo:
             creds_dict = json.load(archivo)
     if not creds_dict:
         raise ValueError("No hay credenciales de Google Sheets")
@@ -954,10 +1291,21 @@ def enviar_email(nuevas: list[dict], menores_nuevos=None, dry_run=False,
     if not all([remitente, destinatario, app_password]):
         log.warning("Correo de oportunidades omitido: faltan variables GMAIL_FROM, GMAIL_TO o GMAIL_APP_PASS")
         return
+
+    # Priorizar oportunidades: primero las viables (no descartadas) y con mayor monto
+    oportunidades.sort(
+        key=lambda o: (
+            o.get("decision") != "DESCARTAR",
+            float(o.get("monto") or 0),
+        ),
+        reverse=True
+    )
+    max_filas = 25
     filas = ""
-    for oportunidad in oportunidades[:100]:
+    for oportunidad in oportunidades[:max_filas]:
         color = "#b91c1c" if oportunidad["decision"] == "DESCARTAR" else "#b45309" if oportunidad["decision"] == "REVISAR BASES" else "#047857"
-        enlace = f'<a href="{html.escape(str(oportunidad["url"]))}">Abrir OECE</a>' if oportunidad["url"] else "—"
+        fuente_lbl = "licitacionesperu" if "licitacionesperu" in str(oportunidad.get("url", "")) else "OECE"
+        enlace = f'<a href="{html.escape(str(oportunidad["url"]))}">Abrir {fuente_lbl}</a>' if oportunidad["url"] else "—"
         filas += (
             f"<tr><td>{html.escape(oportunidad['tipo'])}</td><td>{html.escape(str(oportunidad['entidad']))}</td>"
             f"<td><b>{html.escape(str(oportunidad['id']))}</b><br>{html.escape(str(oportunidad['titulo']))}</td>"
@@ -967,6 +1315,10 @@ def enviar_email(nuevas: list[dict], menores_nuevos=None, dry_run=False,
             f"<span style='font-weight:400'>{html.escape(str(oportunidad['motivo']))}</span></td><td>{enlace}</td></tr>"
         )
     descartadas = sum(1 for item in oportunidades if item["decision"] == "DESCARTAR")
+    aviso_mas = ""
+    if len(oportunidades) > max_filas:
+        aviso_mas = f'<p style="font-size:12px;color:#475569;margin-top:10px">💡 Mostrando las <b>{max_filas}</b> oportunidades principales. El total de <b>{len(oportunidades)}</b> oportunidades se encuentra registrado y actualizado en el Forecast / Google Sheets.</p>'
+
     contenido = f"""
     <div style="font-family:Arial,sans-serif;max-width:1100px;margin:auto">
       <h2 style="color:#534AB7">KAM Intelligence · {len(oportunidades)} procesos nuevos</h2>
@@ -977,16 +1329,27 @@ def enviar_email(nuevas: list[dict], menores_nuevos=None, dry_run=False,
         <th>Nube detectada</th><th>Decisión preliminar</th><th>Fuente</th></tr></thead>
         <tbody>{filas}</tbody>
       </table>
+      {aviso_mas}
       <p style="font-size:12px;color:#64748b">La decisión es preliminar y debe confirmarse con las bases integradas y el RNP.</p>
     </div>"""
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"KAM Intelligence · {len(oportunidades)} procesos nuevos · {descartadas} descartados GCP"
-    msg["From"], msg["To"] = remitente, destinatario
-    msg.attach(MIMEText(contenido, "html", "utf-8"))
+
     receptores = [correo.strip() for correo in destinatario.split(",") if correo.strip()]
+    asunto = f"KAM Intelligence · {len(oportunidades)} procesos nuevos ({len(menores_nuevos)} menores / {len(nuevas)} licitaciones)"
+
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(remitente, app_password)
-        server.sendmail(remitente, receptores, msg.as_string())
+        for receptor in receptores:
+            try:
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = asunto
+                msg["From"] = f"KAM Intelligence <{remitente}>"
+                msg["To"] = receptor
+                msg["X-Mailer"] = "KAM-Intelligence-Sync"
+                msg["Auto-Submitted"] = "auto-generated"
+                msg.attach(MIMEText(contenido, "html", "utf-8"))
+                server.sendmail(remitente, [receptor], msg.as_string())
+            except Exception as exc:
+                log.warning("No se pudo enviar correo de oportunidades a %s: %s", receptor, exc)
     log.info("Correo de oportunidades enviado a %d destinatarios (%d procesos)", len(receptores), len(oportunidades))
 
 
@@ -1008,7 +1371,7 @@ def enviar_alerta_eventos(eventos: list[dict], destinatario: str | None = None,
         return False
     eventos = sorted(eventos, key=lambda item: (item.get("fecha", ""), item.get("entidad", "")))
     filas = ""
-    for evento in eventos[:100]:
+    for evento in eventos[:50]:
         dias = evento.get("dias", "")
         color = "#b91c1c" if isinstance(dias, int) and dias <= 7 else "#b45309" if isinstance(dias, int) and dias <= 30 else "#334155"
         filas += (
@@ -1028,14 +1391,24 @@ def enviar_alerta_eventos(eventos: list[dict], destinatario: str | None = None,
       </table>
       <p style="color:#64748b;font-size:12px">Fuente: KAM Intelligence · OECE OCDS y contratos registrados.</p>
     </div>"""
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"KAM Intelligence · {len(eventos)} alertas de fechas"
-    msg["From"], msg["To"] = remitente, destinatario
-    msg.attach(MIMEText(cuerpo, "html", "utf-8"))
+
     receptores = [correo.strip() for correo in destinatario.split(",") if correo.strip()]
+    asunto = f"KAM Intelligence · {len(eventos)} alertas de fechas"
+
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
         server.login(remitente, app_password)
-        server.sendmail(remitente, receptores, msg.as_string())
+        for receptor in receptores:
+            try:
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = asunto
+                msg["From"] = f"KAM Intelligence <{remitente}>"
+                msg["To"] = receptor
+                msg["X-Mailer"] = "KAM-Intelligence-Sync"
+                msg["Auto-Submitted"] = "auto-generated"
+                msg.attach(MIMEText(cuerpo, "html", "utf-8"))
+                server.sendmail(remitente, [receptor], msg.as_string())
+            except Exception as exc:
+                log.warning("No se pudo enviar alerta de calendario a %s: %s", receptor, exc)
     log.info("Correo de calendario enviado a %d destinatarios (%d eventos)", len(receptores), len(eventos))
     return True
 
@@ -1073,17 +1446,20 @@ def obtener_eventos_calendario_sheets(sh, dias_cierres=30, dias_contratos=180) -
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Sincroniza oportunidades TI oficiales de OECE")
+    parser = argparse.ArgumentParser(description="Sincroniza oportunidades TI oficiales de OECE y Contrataciones Menores")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--local", action="store_true", help="Guarda en licitaciones.json en vez de Google Sheets")
     parser.add_argument("--fecha", type=str, default=None)
     parser.add_argument("--dias", type=int, default=7)
-    parser.add_argument("--max-paginas", type=int, default=2)
     parser.add_argument("--releer-historico", action="store_true",
                         help="Completa clasificación oficial OCDS de filas existentes en Google Sheets")
     parser.add_argument("--max-registros-historico", type=int, default=200)
+    parser.add_argument("--solo-menores", action="store_true", help="Solo busca contrataciones menores directas (licitacionesperu.pe)")
+    parser.add_argument("--solo-licitaciones", action="store_true", help="Solo busca licitaciones en la API OCDS de OECE")
     parser.add_argument("--sin-alertas-calendario", action="store_true",
                         help="No envía el resumen de calendario; útil para sincronizaciones frecuentes")
+    parser.add_argument("--sin-email", action="store_true",
+                        help="No envía correos electrónicos de nuevas oportunidades detectadas")
     args = parser.parse_args()
     if args.releer_historico:
         sh = conectar_sheets()
@@ -1097,7 +1473,13 @@ def main():
     hasta = datetime.strptime(args.fecha, "%Y-%m-%d").date() if args.fecha else date.today()
     desde = hasta - timedelta(days=args.dias)
     log.info("Buscando oportunidades TI oficiales: %s a %s", desde, hasta)
-    menores, candidatas, stats = descargar_oportunidades_oece(desde, hasta, args.max_paginas)
+    incluir_licitaciones = not args.solo_menores
+    incluir_menores = not args.solo_licitaciones
+    menores, candidatas, stats = descargar_oportunidades_oece(
+        desde, hasta, max_paginas=args.max_paginas,
+        incluir_licitaciones=incluir_licitaciones,
+        incluir_menores_web=incluir_menores,
+    )
     log.info("Resultado: %s", stats)
 
     if args.local:
@@ -1131,9 +1513,10 @@ def main():
             guardar_en_sheets(sh, menores_nuevos, "procesos")
 
     log.info("Nuevas sin duplicados: %d menores y %d licitaciones", len(menores_nuevos), len(nuevas))
-    for lic in nuevas[:10]:
-        log.info("%s | %s | %s | score %s", lic["id"], lic["entidad"], lic["subcategoria_ti"], lic["score_ti"])
-    enviar_email(nuevas, menores_nuevos, dry_run=args.dry_run)
+    if not args.sin_email:
+        enviar_email(nuevas, menores_nuevos, dry_run=args.dry_run)
+    else:
+        log.info("Envío de correo omitido (--sin-email)")
     if not args.local and not args.sin_alertas_calendario:
         eventos = obtener_eventos_calendario_sheets(sh)
         log.info("Alertas de calendario detectadas: %d", len(eventos))
