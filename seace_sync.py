@@ -1589,6 +1589,11 @@ def enviar_email(nuevas: list[dict], menores_nuevos=None, dry_run=False,
       <p style="font-size:12px;color:#64748b">La decisión es preliminar y debe confirmarse con las bases integradas y el RNP.</p>
     </div>"""
 
+    texto_plano = (
+        f"KAM Intelligence: {len(oportunidades)} procesos nuevos "
+        f"({len(menores_nuevos)} menores / {len(nuevas)} licitaciones).\n"
+        f"Consulte el CRM de oportunidades para mayor detalle."
+    )
     receptores = [correo.strip() for correo in destinatario.split(",") if correo.strip()]
     asunto = f"KAM Intelligence · {len(oportunidades)} procesos nuevos ({len(menores_nuevos)} menores / {len(nuevas)} licitaciones)"
 
@@ -1600,8 +1605,8 @@ def enviar_email(nuevas: list[dict], menores_nuevos=None, dry_run=False,
                 msg["Subject"] = asunto
                 msg["From"] = f"KAM Intelligence <{remitente}>"
                 msg["To"] = receptor
-                msg["X-Mailer"] = "KAM-Intelligence-Sync"
-                msg["Auto-Submitted"] = "auto-generated"
+                msg["Reply-To"] = remitente
+                msg.attach(MIMEText(texto_plano, "plain", "utf-8"))
                 msg.attach(MIMEText(contenido, "html", "utf-8"))
                 server.sendmail(remitente, [receptor], msg.as_string())
             except Exception as exc:
@@ -2090,10 +2095,20 @@ def enviar_reporte_radar(radar: list[dict] | None = None,
         </div>
 
         <p style="font-size:11px;color:#94a3b8;margin-top:20px;text-align:center">
-          Generado automáticamente por KAM Intelligence · Accede al Pipeline CRM en vivo en <a href="http://localhost:8501" style="color:#534AB7">http://localhost:8501</a>
+          Generado automáticamente por KAM Intelligence · Accede al Pipeline CRM en tu servidor local.
         </p>
       </div>
     </div>"""
+
+    texto_plano = (
+        f"KAM Intelligence · Radar Predictivo de Renovaciones\n"
+        f"Total renovaciones proyectadas (0-90 días): {len(radar)}\n"
+        f"Monto Total Estimado: S/ {monto_total:,.2f}\n"
+        f"Cuentas Qubits a defender: {len(propias)} cuentas (S/ {monto_propias:,.2f})\n"
+        f"Contratos en ventana urgente (0-30 días): {len(u30)}\n"
+        f"Contratos en prospección (31-60 días): {len(u60)}\n\n"
+        f"Consulte el reporte completo en su portal KAM Intelligence."
+    )
 
     receptores = [correo.strip() for correo in destinatario.split(",") if correo.strip()]
     asunto = f"KAM Intelligence · Radar Predictivo: {len(radar)} Renovaciones (S/ {monto_total:,.0f} · {len(propias)} Cuentas Qubits)"
@@ -2106,8 +2121,8 @@ def enviar_reporte_radar(radar: list[dict] | None = None,
                 msg["Subject"] = asunto
                 msg["From"] = f"KAM Intelligence <{remitente}>"
                 msg["To"] = receptor
-                msg["X-Mailer"] = "KAM-Intelligence-Sync"
-                msg["Auto-Submitted"] = "auto-generated"
+                msg["Reply-To"] = remitente
+                msg.attach(MIMEText(texto_plano, "plain", "utf-8"))
                 msg.attach(MIMEText(html_contenido, "html", "utf-8"))
                 server.sendmail(remitente, [receptor], msg.as_string())
             except Exception as exc:
