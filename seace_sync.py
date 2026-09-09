@@ -29,9 +29,10 @@ API_BASE = "https://contratacionesabiertas.oece.gob.pe/api/v1"
 SPREADSHEET_ID = "1CsnfzVC_Bk9CTK2BHJCoBU1gouIEAnXApC_Ji0DoSeI"
 HOJA_LICITACIONES = "licitaciones"
 HOJA_SYNC_LOG = "sync_log"
+UIT_POR_ANIO = {2025: 5350, 2026: 5500}
 # Términos que DESCARTAN un proceso automáticamente
 TERMINOS_EXCLUIR = [
-    "ejecucion de obra","elaboracion de expediente tecnico","supervision de obra",
+    "ejecucion de obra","supervision de obra",
     "construccion de","mejoramiento de infraestructura vial","pavimentacion",
     "asfaltado","pista atletica","grass deportivo","estadio","losa deportiva",
     "campo deportivo","parque","plaza","vereda","puente","carretera",
@@ -48,7 +49,7 @@ TERMINOS_EXCLUIR = [
     "servicio de alimentacion","catering","lavanderia",
     "mantenimiento de jardines","podado","fumigacion",
     "transporte de personal","courier",
-    "correo fisico y mensajeria nacional", "servicio de mensajeria fisica local",
+    "correo fisico", "correo fisico y mensajeria nacional", "servicio de mensajeria fisica local",
     "servicio de mensajeria fisica nacional", "mensajeria fisica", "servicio courier",
     "servicio postal", "distribucion fisica de documentos",
     "reparacion de analizador", "analizador de presion", "equipo medico",
@@ -248,12 +249,19 @@ REGLAS_TI = {
             "expediente tecnico de seguridad ciudadana", "expediente tecnico de centro de datos",
             "expediente tecnico datacenter", "expediente tecnico de fibra optica",
             "expediente tecnico de telecomunicaciones", "supervision de expediente tecnico de videovigilancia",
+            "elaboracion de expediente tecnico", "elaboracion del expediente tecnico",
+            "supervision de elaboracion de expediente tecnico", "supervision de la elaboracion del expediente tecnico",
+            "consultoria para expediente tecnico", "consultoria para la elaboracion del expediente tecnico",
+            "expediente de saldo de obra", "saldo de obra",
         ],
         2: [
             "elaboracion de expediente tecnico de videovigilancia", "supervision de expediente tecnico de videovigilancia",
             "elaboracion de expediente tecnico de comunicaciones", "consultoria para expediente tecnico de ti",
+            "revision de expediente tecnico", "evaluacion de expediente tecnico",
+            "actualizacion de expediente tecnico", "supervision de expediente tecnico",
+            "supervision de expedientes",
         ],
-        1: ["expediente tecnico tecnologico", "estudio definitivo de telecomunicaciones"],
+        1: ["expediente tecnico tecnologico", "estudio definitivo de telecomunicaciones", "expediente tecnico"],
     },
     "Videoconferencia": {
         3: ["videoconferencia", "video conferencia", "zoom", "google meet"],
@@ -272,7 +280,7 @@ REGLAS_TI = {
 EXCLUSIONES = [
     # Excluir únicamente logística y mensajería física; correo electrónico,
     # colaboración y mensajería digital sí son oportunidades comerciales.
-    "correo fisico y mensajeria nacional", "servicio de mensajeria fisica local",
+    "correo fisico", "correo fisico y mensajeria nacional", "servicio de mensajeria fisica local",
     "servicio de mensajeria fisica nacional", "mensajeria fisica", "servicio courier", "courier",
     "servicio postal", "distribucion fisica de documentos",
     "reparacion de analizador", "analizador de presion", "equipo medico",
@@ -320,7 +328,10 @@ def _es_excluido(texto: str) -> bool:
         "centro de datos", "datacenter", "fibra optica", "cableado estructurado",
         "software", "sistema de informacion", "telecomunicaciones", "servidores",
         "servidor", "ciberseguridad", "correo electronico", "central telefonica",
-        "nube", "cloud", "computadora", "laptop", "antivirus", "switch", "router"
+        "nube", "cloud", "computadora", "laptop", "antivirus", "switch", "router",
+        "google workspace", "mensajeria digital",
+        "expediente tecnico", "expedientes tecnicos", "saldo de obra",
+        "supervision de expediente", "supervision de expedientes",
     )
     if any(_contiene_frase(t, ti) for ti in terminos_ti_fuertes):
         return False
@@ -521,12 +532,9 @@ def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -
     elif detectados:
         decision = "EVALUAR"
         motivo = f"Proveedor de nube detectado: {', '.join(detectados)}. No corresponde a GCP."
-    elif menciona_nube:
+    else:
         decision = "REVISAR BASES"
         motivo = "El proceso menciona nube, pero el proveedor no se identifica en el título, descripción o metadatos de las bases."
-    else:
-        decision = "EVALUAR"
-        motivo = "No se detectó una contratación de infraestructura Google Cloud/GCP."
     return {
         "proveedor_nube_detectado": ", ".join(detectados) if detectados else ("Google Workspace" if workspace else "No identificado"),
         "decision_comercial": decision,
@@ -540,7 +548,10 @@ def evaluar_politica_nube(titulo: str, descripcion: str = "", documentos=None) -
 def extraer_texto_pdf(contenido_bytes: bytes, max_paginas: int = 150) -> tuple[str, int]:
     """Extrae texto de un buffer PDF usando PyMuPDF (fitz) con fallback a pypdf."""
     try:
-        import fitz
+        try:
+            import pymupdf as fitz
+        except ImportError:
+            import fitz
         with fitz.open(stream=contenido_bytes, filetype="pdf") as doc:
             total = len(doc)
             texto = " ".join((doc[i].get_text() or "") for i in range(min(total, max_paginas)))

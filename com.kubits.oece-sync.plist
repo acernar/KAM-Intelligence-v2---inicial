@@ -11,44 +11,18 @@
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/alexcerna/Documents/KUBITS KAM Intelligence/sistema-procesos-qubits-v3</string>
+  <string>/Users/alexcerna/Library/Application Support/KUBITS/oece-sync-runtime</string>
 
   <key>RunAtLoad</key>
   <true/>
 
   <key>StartCalendarInterval</key>
-  <array>
-    <dict>
-      <key>Hour</key>
-      <integer>8</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-    <dict>
-      <key>Hour</key>
-      <integer>11</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-    <dict>
-      <key>Hour</key>
-      <integer>14</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-    <dict>
-      <key>Hour</key>
-      <integer>17</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-    <dict>
-      <key>Hour</key>
-      <integer>20</integer>
-      <key>Minute</key>
-      <integer>0</integer>
-    </dict>
-  </array>
+  <dict>
+    <key>Hour</key>
+    <integer>12</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
 
   <key>StandardOutPath</key>
   <string>/Users/alexcerna/Library/Logs/KUBITS/oece-sync.log</string>
