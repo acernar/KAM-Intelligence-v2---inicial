@@ -384,33 +384,49 @@ OECE_HEADERS = {
 }
 
 
+_oece_session = None
+
+
+def _get_oece_session() -> requests.Session:
+    global _oece_session
+    if _oece_session is None:
+        s = requests.Session()
+        s.headers.update(OECE_HEADERS)
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=25,
+            pool_maxsize=25,
+            max_retries=0,
+        )
+        s.mount("https://", adapter)
+        s.mount("http://", adapter)
+        _oece_session = s
+    return _oece_session
+
+
 def _get_json(url: str, params=None, max_intentos: int = 4) -> dict:
-    """Consulta OECE con reintentos para bloqueos y errores temporales."""
-    if params:
-        url = f"{url}?{urllib.parse.urlencode(params)}"
+    """Consulta OECE con sesión HTTP Keep-Alive, reintentos y timeouts adaptativos."""
+    session = _get_oece_session()
     ultimo_error = None
     for intento in range(1, max_intentos + 1):
-        request = urllib.request.Request(url, headers=OECE_HEADERS)
         try:
-            with urllib.request.urlopen(request, timeout=90) as response:
-                return json.load(response)
-        except urllib.error.HTTPError as exc:
-            ultimo_error = exc
-            reintentable = exc.code in (403, 408, 425, 429, 500, 502, 503, 504)
+            resp = session.get(url, params=params, timeout=(10, 25))
+            if resp.status_code == 200:
+                return resp.json()
+            reintentable = resp.status_code in (403, 408, 425, 429, 500, 502, 503, 504)
             if not reintentable or intento == max_intentos:
                 raise RuntimeError(
                     f"OECE rechazó la consulta después de {intento} intentos "
-                    f"(HTTP {exc.code}). URL: {url.split('?')[0]}"
-                ) from exc
+                    f"(HTTP {resp.status_code}). URL: {url}"
+                )
             espera = min(20, 2 ** intento)
-            log.warning("OECE HTTP %s; reintento %d/%d en %ss", exc.code, intento, max_intentos, espera)
+            log.warning("OECE HTTP %s; reintento %d/%d en %ss", resp.status_code, intento, max_intentos, espera)
             time.sleep(espera)
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        except (requests.exceptions.RequestException, json.JSONDecodeError, OSError) as exc:
             ultimo_error = exc
             if intento == max_intentos:
                 raise RuntimeError(f"OECE no respondió después de {intento} intentos") from exc
             espera = min(20, 2 ** intento)
-            log.warning("OECE no respondió; reintento %d/%d en %ss", intento, max_intentos, espera)
+            log.warning("OECE error (%s); reintento %d/%d en %ss", type(exc).__name__, intento, max_intentos, espera)
             time.sleep(espera)
     raise RuntimeError("No se pudo consultar OECE") from ultimo_error
 
@@ -1190,28 +1206,45 @@ def descargar_licitaciones_oece(fecha_desde: date, fecha_hasta: date | None = No
     candidatos = {}
     consultas = 0
 
-    for year in range(fecha_desde.year, fecha_hasta.year + 1):
-        for termino in TERMINOS_BUSQUEDA:
-            for pagina in range(1, max_paginas + 1):
-                consultas += 1
+    def _buscar_termino_ano(args_tupla):
+        year, termino = args_tupla
+        cands = {}
+        n_consultas = 0
+        for pagina in range(1, max_paginas + 1):
+            n_consultas += 1
+            try:
                 data = _get_json(f"{API_BASE}/search", {
                     "year": year, "search": termino, "page": pagina,
                     "paginateBy": page_size, "format": "json",
                 })
-                resultados = data.get("results") or []
-                for resultado in resultados:
-                    release = resultado.get("compiledRelease") or {}
-                    tender = release.get("tender") or {}
-                    publicada_resumen = _fecha_corta(tender.get("datePublished") or release.get("date"))
-                    if publicada_resumen and not (fecha_desde.isoformat() <= publicada_resumen <= fecha_hasta.isoformat()):
-                        continue
-                    score, _, _ = evaluar_relevancia(tender.get("description", ""), tender.get("title", ""))
-                    ocid = release.get("ocid")
-                    if ocid and score >= 3:
-                        candidatos[ocid] = resultado
-                paginacion = data.get("pagination") or {}
-                if not resultados or not paginacion.get("has_next"):
-                    break
+            except Exception as exc:
+                log.warning("No se pudo consultar término '%s' (pág %d): %s", termino, pagina, exc)
+                break
+            resultados = data.get("results") or []
+            for resultado in resultados:
+                release = resultado.get("compiledRelease") or {}
+                tender = release.get("tender") or {}
+                publicada_resumen = _fecha_corta(tender.get("datePublished") or release.get("date"))
+                if publicada_resumen and not (fecha_desde.isoformat() <= publicada_resumen <= fecha_hasta.isoformat()):
+                    continue
+                score, _, _ = evaluar_relevancia(tender.get("description", ""), tender.get("title", ""))
+                ocid = release.get("ocid")
+                if ocid and score >= 3:
+                    cands[ocid] = resultado
+            paginacion = data.get("pagination") or {}
+            if not resultados or not paginacion.get("has_next"):
+                break
+        return cands, n_consultas
+
+    tareas = [
+        (year, termino)
+        for year in range(fecha_desde.year, fecha_hasta.year + 1)
+        for termino in TERMINOS_BUSQUEDA
+    ]
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        for cands, n_consultas in executor.map(_buscar_termino_ano, tareas):
+            consultas += n_consultas
+            candidatos.update(cands)
 
     def cargar_detalle(ocid):
         paquete = _get_json(f"{API_BASE}/record/{urllib.parse.quote(ocid, safe='')}")
@@ -1270,7 +1303,16 @@ def conectar_sheets():
 
 
 def obtener_ids_existentes(sh, hoja=HOJA_LICITACIONES) -> set[str]:
-    return {str(row.get("id", "")).strip() for row in sh.worksheet(hoja).get_all_records() if row.get("id")}
+    ws = sh.worksheet(hoja)
+    try:
+        cabecera = ws.row_values(1)
+        if "id" in cabecera:
+            col_idx = cabecera.index("id") + 1
+            valores = ws.col_values(col_idx)
+            return {str(val).strip() for val in valores[1:] if str(val).strip()}
+    except Exception as exc:
+        log.warning("No se pudo leer columna id optimizada en %s (%s); usando fallback", hoja, exc)
+    return {str(row.get("id", "")).strip() for row in ws.get_all_records() if row.get("id")}
 
 
 def deduplicar_por_id(registros: list[dict]) -> list[dict]:
@@ -1287,14 +1329,15 @@ def guardar_en_sheets(sh, nuevas: list[dict], hoja=HOJA_LICITACIONES):
     if not nuevas:
         return
     ws = sh.worksheet(hoja)
-    registros = ws.get_all_records()
-    columnas = list(registros[0].keys()) if registros else list(nuevas[0].keys())
+    columnas = ws.row_values(1)
+    if not columnas:
+        columnas = list(nuevas[0].keys())
+        ws.append_row(columnas)
     columnas_nuevas = sorted({campo for item in nuevas for campo in item if campo not in columnas})
     if columnas_nuevas:
         columnas.extend(columnas_nuevas)
-        ws.update(values=[columnas], range_name="A1", value_input_option="RAW")
-    if not registros:
-        ws.append_row(columnas)
+        from gspread.utils import rowcol_to_a1
+        ws.update(values=[columnas], range_name=f"A1:{rowcol_to_a1(1, len(columnas))}", value_input_option="RAW")
     filas = []
     for lic in nuevas:
         fila = []
