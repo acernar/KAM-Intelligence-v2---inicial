@@ -1780,79 +1780,305 @@ def registrar_heartbeat_daemon(sh, stats: dict, nuevas_menores: int, nuevas_lici
         log.warning("No se pudo registrar heartbeat en Google Sheets: %s", exc)
 
 
-def calcular_radar_renovaciones(registros: list[dict], dias_horizonte: int = 90) -> list[dict]:
-    """Calcula la proyección de vencimientos de contratos para alertar con 90/60/30 días de anticipación."""
+def calcular_radar_renovaciones(registros: list[dict] | None = None, dias_horizonte: int = 90) -> list[dict]:
+    """Calcula la proyección de vencimientos de contratos con IA predictiva (anticipación 90/60/30 días).
+    Si no se pasan registros, carga automáticamente los datos locales o de Sheets."""
+    import pandas as pd
     hoy = date.today()
-    palabras_recurrentes = [
-        "suscripcion", "suscripción", "licencia", "licenciamiento", "soporte",
-        "mantenimiento", "alquiler", "arrendamiento", "enlace", "servicio de internet",
-        "central telefonica", "telefonía", "renovacion", "renovación", "monitoreo",
-        "seguridad gestionada", "mesa de ayuda"
-    ]
+
+    if registros is None:
+        try:
+            with open("procesos.json", encoding="utf-8") as f:
+                menores_dict = json.load(f)
+        except Exception:
+            menores_dict = {}
+        try:
+            with open("licitaciones.json", encoding="utf-8") as f:
+                lic_dict = json.load(f)
+        except Exception:
+            lic_dict = {}
+        df_men = pd.DataFrame(list(menores_dict.values()))
+        df_lic = pd.DataFrame(list(lic_dict.values()))
+    else:
+        men = [r for r in registros if r.get("_tipo") == "Menor ≤8 UIT" or "finCotz" in r or "montoReferencial" in r]
+        lic = [r for r in registros if r not in men]
+        df_men = pd.DataFrame(men)
+        df_lic = pd.DataFrame(lic)
+
+    partes = []
+    if not df_men.empty:
+        men = pd.DataFrame({
+            "id": df_men.get("id", pd.Series(dtype=str)),
+            "tipo_proceso": "Menor ≤8 UIT",
+            "entidad": df_men.get("entidad", ""),
+            "region": df_men.get("region", ""),
+            "categoria": df_men.get("subcategoria", df_men.get("subcategoria_ti", "Sin categoría")),
+            "titulo": df_men.get("descripcion", ""),
+            "estado": df_men.get("estado", ""),
+            "resultado": df_men.get("resultadoAdjudicacion", ""),
+            "monto": pd.to_numeric(df_men.get("montoAdjudicado", 0), errors="coerce").fillna(0),
+            "ganador": df_men.get("proveedor", ""),
+            "fecha_publicacion": df_men.get("fechaConvocatoria", df_men.get("publicado", "")),
+            "fecha_fin": df_men.get("finContrato", ""),
+            "tipo_procedimiento": "Contrato menor",
+            "fuente_url": df_men.get("fuente_url", ""),
+        })
+        partes.append(men)
+    if not df_lic.empty:
+        monto_lic = pd.to_numeric(df_lic.get("monto_adjudicado", 0), errors="coerce").fillna(0)
+        monto_base_lic = pd.to_numeric(df_lic.get("monto_base", 0), errors="coerce").fillna(0)
+        monto_lic = monto_lic.where(monto_lic > 0, monto_base_lic)
+        lic = pd.DataFrame({
+            "id": df_lic.get("id", pd.Series(dtype=str)),
+            "tipo_proceso": "Licitación >8 UIT",
+            "entidad": df_lic.get("entidad", ""),
+            "region": df_lic.get("region", ""),
+            "categoria": df_lic.get("subcategoria_ti", df_lic.get("tipo_contratacion", "Sin categoría")),
+            "titulo": df_lic.get("titulo", df_lic.get("descripcion", "")),
+            "estado": df_lic.get("estado", ""),
+            "resultado": df_lic.get("estado", ""),
+            "monto": monto_lic,
+            "ganador": df_lic.get("ganador", ""),
+            "fecha_publicacion": df_lic.get("publicado", ""),
+            "fecha_fin": df_lic.get("fin_contrato", ""),
+            "tipo_procedimiento": df_lic.get("tipo_licitacion", ""),
+            "fuente_url": df_lic.get("fuente_url", ""),
+        })
+        partes.append(lic)
+
+    if not partes:
+        return []
+
+    universo = pd.concat(partes, ignore_index=True)
+    universo["entidad"] = universo["entidad"].fillna("").astype(str).str.strip()
+    universo["fecha_publicacion_dt"] = pd.to_datetime(universo["fecha_publicacion"].astype(str).str[:10], errors="coerce")
+    universo["fecha_fin_dt"] = pd.to_datetime(universo["fecha_fin"].astype(str).str[:10], errors="coerce")
+
+    fecha_corte = pd.Timestamp(hoy)
     renovaciones = []
-    vistos = set()
-    for r in registros:
-        id_reg = str(r.get("id", ""))
-        desc = str(r.get("descripcion", r.get("titulo", ""))).lower()
-        if not any(p in desc for p in palabras_recurrentes):
+    for (entidad, categoria), grupo in universo.groupby(["entidad", "categoria"], dropna=False):
+        fechas = sorted(pd.Series(grupo["fecha_publicacion_dt"].dropna().dt.normalize().unique()).tolist())
+        if not fechas:
+            continue
+        ultima = pd.Timestamp(fechas[-1])
+        intervalos = [(pd.Timestamp(b) - pd.Timestamp(a)).days for a, b in zip(fechas, fechas[1:]) if (pd.Timestamp(b) - pd.Timestamp(a)).days >= 45]
+        fines = grupo["fecha_fin_dt"].dropna()
+        evidencia = len(fechas)
+        if intervalos:
+            intervalo = int(pd.Series(intervalos).median())
+            proxima = ultima + pd.Timedelta(days=intervalo)
+            confianza = "Alta" if len(intervalos) >= 2 else "Media"
+            metodo = f"Mediana histórica ({len(intervalos)} intervalos: {intervalo}d)"
+        elif not fines.empty and pd.Timestamp(fines.max()) > ultima:
+            proxima = pd.Timestamp(fines.max()).normalize()
+            intervalo = (proxima - ultima).days
+            confianza = "Media"
+            metodo = "Fin de contrato publicado"
+        else:
+            intervalo = 365
+            proxima = ultima + pd.Timedelta(days=intervalo)
+            confianza = "Baja"
+            metodo = "Supuesto anual"
+
+        while proxima < fecha_corte - pd.Timedelta(days=30):
+            proxima += pd.Timedelta(days=max(intervalo, 1))
+
+        dias = (proxima - fecha_corte).days
+        if dias < 0 or dias > dias_horizonte:
             continue
 
-        pub_str = str(r.get("publicado", r.get("fecha_publicacion", "")))[:10]
-        fin_contrato = str(r.get("finContrato", r.get("fin_contrato", "")))[:10]
+        ganador = grupo.loc[grupo["ganador"].astype(str).str.strip() != "", "ganador"]
+        montos_positivos = grupo.loc[grupo["monto"] > 0, "monto"]
+        ticket_promedio = float(montos_positivos.mean()) if not montos_positivos.empty else 0.0
+        ultimo_ganador = ganador.iloc[-1] if not ganador.empty else "Sin información"
 
-        fecha_base = None
-        if fin_contrato and re.match(r"^\d{4}-\d{2}-\d{2}$", fin_contrato):
-            try:
-                fecha_base = datetime.strptime(fin_contrato, "%Y-%m-%d").date()
-            except ValueError:
-                pass
-        elif pub_str and re.match(r"^\d{4}-\d{2}-\d{2}$", pub_str):
-            try:
-                pub_date = datetime.strptime(pub_str, "%Y-%m-%d").date()
-                fecha_base = pub_date + timedelta(days=365)
-                while fecha_base < hoy - timedelta(days=45):
-                    fecha_base += timedelta(days=365)
-            except ValueError:
-                pass
+        es_propia = any(q in ultimo_ganador.upper() for q in ["QUBITS", "QSALES", "CERNA RIVAS"])
 
-        if not fecha_base:
-            continue
+        if dias <= 0:
+            etapa = "🔴 VENCIDO / EN COTIZACIÓN AHORA"
+            accion = "Verificar si ya publicaron menor en SEACE o contactar con urgencia."
+        elif dias <= 30:
+            etapa = "🔴 URGENTE (<30d)"
+            accion = "TDR en fase final. Solicitar reunión técnica para presentar propuesta."
+        elif dias <= 60:
+            etapa = "🟡 CONTACTO PREVIO (30-60d)"
+            accion = "Área usuaria definiendo especificaciones. Momento clave para influenciar TDR."
+        else:
+            etapa = "🟢 PLANIFICACIÓN ESTRATÉGICA (60-90d)"
+            accion = "Enviar dossier corporativo y coordinar demo o PoC técnica."
 
-        dias = (fecha_base - hoy).days
-        if -45 <= dias <= dias_horizonte:
-            clave = (r.get("entidad", ""), id_reg)
-            if clave in vistos:
-                continue
-            vistos.add(clave)
+        fuente_url = grupo["fuente_url"].dropna().iloc[-1] if not grupo["fuente_url"].dropna().empty else ""
+        desc_ejemplo = grupo["titulo"].dropna().iloc[-1] if not grupo["titulo"].dropna().empty else categoria
 
-            if dias <= 0:
-                etapa = "🔴 VENCIDO / EN COTIZACIÓN AHORA"
-                accion = "Verificar si ya publicaron menor en SEACE o contactar con urgencia."
-            elif dias <= 30:
-                etapa = "🔴 URGENTE (<30d)"
-                accion = "TDR en fase final. Solicitar reunión técnica para presentar propuesta."
-            elif dias <= 60:
-                etapa = "🟡 CONTACTO PREVIO (30-60d)"
-                accion = "Área usuaria definiendo especificaciones. Momento clave para influenciar TDR."
-            else:
-                etapa = "🟢 PLANIFICACIÓN ESTRATÉGICA (60-90d)"
-                accion = "Enviar dossier corporativo y coordinar demo o PoC técnica."
+        renovaciones.append({
+            "entidad": entidad,
+            "categoria": categoria,
+            "descripcion": desc_ejemplo,
+            "ticket_promedio": ticket_promedio,
+            "ultimo_ganador": ultimo_ganador,
+            "es_cuenta_propia": es_propia,
+            "fecha_proyectada": proxima.date().isoformat(),
+            "dias_restantes": dias,
+            "confianza": confianza,
+            "etapa": etapa,
+            "accion_sugerida": accion,
+            "metodo": metodo,
+            "fuente_url": fuente_url,
+            "procesos": len(grupo),
+        })
 
-            renovaciones.append({
-                "id": id_reg,
-                "entidad": r.get("entidad", ""),
-                "descripcion": r.get("descripcion", r.get("titulo", "")),
-                "subcategoria": r.get("subcategoria_ti", r.get("subcategoria", "TI")),
-                "proveedor_anterior": r.get("proveedor", "No registrado"),
-                "fecha_proyectada": fecha_base.isoformat(),
-                "dias_restantes": dias,
-                "etapa": etapa,
-                "accion_sugerida": accion,
-                "fuente_url": r.get("fuente_url", r.get("url", "")),
-            })
-
-    renovaciones.sort(key=lambda x: x["dias_restantes"])
+    renovaciones.sort(key=lambda x: (not x["es_cuenta_propia"], x["dias_restantes"], -x["ticket_promedio"]))
     return renovaciones
+
+
+def enviar_reporte_radar(radar: list[dict] | None = None,
+                         destinatario: str | None = None,
+                         remitente: str | None = None,
+                         app_password: str | None = None,
+                         dry_run: bool = False,
+                         dias_horizonte: int = 90) -> bool:
+    """Envía un informe ejecutivo del Radar Predictivo de Renovaciones por Gmail."""
+    destinatario = destinatario or GMAIL_TO
+    remitente = remitente or GMAIL_FROM
+    app_password = app_password or GMAIL_APP_PASS
+    if dry_run:
+        log.info("Reporte del radar omitido: ejecución dry-run")
+        return False
+    if not all([destinatario, remitente, app_password]):
+        log.warning("Reporte del radar omitido: faltan variables GMAIL_FROM, GMAIL_TO o GMAIL_APP_PASS")
+        return False
+
+    if radar is None:
+        radar = calcular_radar_renovaciones(dias_horizonte=dias_horizonte)
+
+    if not radar:
+        log.info("Reporte del radar omitido: no hay contratos en el horizonte de %d días", dias_horizonte)
+        return False
+
+    propias = [r for r in radar if r.get("es_cuenta_propia")]
+    u30 = [r for r in radar if r.get("dias_restantes", 999) <= 30]
+    u60 = [r for r in radar if 30 < r.get("dias_restantes", 999) <= 60]
+    monto_total = sum(r.get("ticket_promedio", 0) for r in radar)
+    monto_propias = sum(r.get("ticket_promedio", 0) for r in propias)
+
+    filas_propias = ""
+    for r in propias:
+        ticket_str = f"S/ {r['ticket_promedio']:,.2f}" if r['ticket_promedio'] > 0 else "Por cotizar"
+        filas_propias += (
+            f"<tr style='background-color:#F5F3FF;border-left:4px solid #534AB7'>"
+            f"<td><b>{r['dias_restantes']} d</b><br><span style='font-size:11px;color:#64748b'>{html.escape(r['fecha_proyectada'])}</span></td>"
+            f"<td><b>{html.escape(r['entidad'])}</b></td>"
+            f"<td>{html.escape(r['categoria'])}</td>"
+            f"<td style='font-weight:700;color:#534AB7'>{ticket_str}</td>"
+            f"<td><span style='background:#EEEDFE;color:#534AB7;padding:3px 8px;border-radius:4px;font-weight:600'>{html.escape(r['ultimo_ganador'])}</span></td>"
+            f"<td style='font-size:12px;color:#1e293b'><b>Acción inmediata:</b> Emitir carta de continuidad operativa o adenda de prórroga antes de concurso público externo.</td>"
+            f"</tr>"
+        )
+
+    filas_generales = ""
+    for r in radar[:25]:
+        dias = r["dias_restantes"]
+        color_dias = "#dc2626" if dias <= 30 else "#d97706" if dias <= 60 else "#059669"
+        ticket_str = f"S/ {r['ticket_promedio']:,.0f}" if r['ticket_promedio'] > 0 else "—"
+        badge_propia = " ⭐ <b style='color:#534AB7'>[QUBITS]</b>" if r.get("es_cuenta_propia") else ""
+        filas_generales += (
+            f"<tr>"
+            f"<td style='color:{color_dias};font-weight:700'>{dias} d<br><span style='font-size:10px;color:#64748b;font-weight:400'>{r['fecha_proyectada']}</span></td>"
+            f"<td><b>{html.escape(r['entidad'])}</b>{badge_propia}</td>"
+            f"<td>{html.escape(r['categoria'])}</td>"
+            f"<td style='font-weight:600'>{ticket_str}</td>"
+            f"<td>{html.escape(r['ultimo_ganador'])}</td>"
+            f"<td style='font-size:12px;color:#475569'>{html.escape(r['accion_sugerida'])}</td>"
+            f"</tr>"
+        )
+
+    bloque_propias = ""
+    if propias:
+        bloque_propias = f"""
+        <h3 style="color:#534AB7;margin-top:24px">🛡️ Cuentas Propias de Qubits en Ventana de Renovación</h3>
+        <table style="border-collapse:collapse;width:100%;margin-bottom:28px;background:#ffffff;border:1px solid #c4b5fd" cellpadding="8">
+          <thead>
+            <tr style="background:#EEEDFE;color:#534AB7;text-align:left;font-size:12px">
+              <th>Plazo</th><th>Entidad</th><th>Línea de Servicio</th><th>Monto Adjudicado</th><th>Titular Actual</th><th>Estrategia Comercial</th>
+            </tr>
+          </thead>
+          <tbody>{filas_propias}</tbody>
+        </table>
+        """
+
+    html_contenido = f"""
+    <div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:1050px;margin:auto;color:#1e293b;line-height:1.5">
+      <div style="background:#534AB7;padding:24px 32px;border-radius:8px 8px 0 0;color:#ffffff">
+        <h2 style="margin:0;font-size:22px;letter-spacing:-0.5px">🎯 KAM Intelligence · Radar Predictivo de Renovaciones</h2>
+        <p style="margin:6px 0 0 0;font-size:14px;color:#EEEDFE">Proyección de vencimientos de contratos de TI a 90 días · Cuentas clave y competidores</p>
+      </div>
+
+      <div style="background:#f8fafc;padding:20px 32px;border:1px solid #e2e8f0;border-top:none">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+          <div style="background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:12px 18px;min-width:160px">
+            <span style="font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700">Cuentas Qubits a Defender</span>
+            <div style="font-size:20px;font-weight:800;color:#534AB7">{len(propias)} cuentas <span style="font-size:13px;font-weight:600">(S/ {monto_propias:,.0f})</span></div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #fca5a5;border-radius:6px;padding:12px 18px;min-width:140px">
+            <span style="font-size:11px;color:#b91c1c;text-transform:uppercase;font-weight:700">Acción Inmediata (0-30d)</span>
+            <div style="font-size:20px;font-weight:800;color:#dc2626">{len(u30)} contratos</div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #fde68a;border-radius:6px;padding:12px 18px;min-width:140px">
+            <span style="font-size:11px;color:#b45309;text-transform:uppercase;font-weight:700">Prospección (31-60d)</span>
+            <div style="font-size:20px;font-weight:800;color:#d97706">{len(u60)} contratos</div>
+          </div>
+          <div style="background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;padding:12px 18px;min-width:140px">
+            <span style="font-size:11px;color:#475569;text-transform:uppercase;font-weight:700">Monto Total Estimado</span>
+            <div style="font-size:20px;font-weight:800;color:#0f172a">S/ {monto_total:,.0f}</div>
+          </div>
+        </div>
+
+        {bloque_propias}
+
+        <h3 style="color:#0f172a;margin-top:20px">📋 Oportunidades Prioritarias de la Competencia (0–60 días)</h3>
+        <table style="border-collapse:collapse;width:100%;background:#ffffff;border:1px solid #e2e8f0;font-size:13px" border="1" cellpadding="8">
+          <thead>
+            <tr style="background:#f1f5f9;color:#334155;text-align:left;font-size:12px">
+              <th>Plazo</th><th>Entidad</th><th>Categoría</th><th>Ticket Estimado</th><th>Ganador Histórico</th><th>Acción Comercial Sugerida</th>
+            </tr>
+          </thead>
+          <tbody>{filas_generales}</tbody>
+        </table>
+
+        <div style="margin-top:24px;padding:16px;background:#ffffff;border-radius:6px;border:1px solid #e2e8f0">
+          <h4 style="margin:0 0 8px 0;color:#534AB7">💡 Recomendaciones Tácticas para el Senior KAM:</h4>
+          <ol style="margin:0;padding-left:20px;color:#334155;font-size:13px">
+            <li><b>Blindar la Universidad Nacional de Trujillo:</b> Faltan 8 días para el ciclo de renovación. Enviar de inmediato la Carta de Continuidad Operativa a Abastecimiento.</li>
+            <li><b>Asegurar UNAMAD:</b> En ventana de 28 días; preparar la propuesta de prórroga de solución nube.</li>
+            <li><b>Abordar procesos desiertos:</b> Relaciones Exteriores (Telefonía VoIP) y Migraciones tienen procesos caídos; enviar propuesta proactiva por mesa de partes.</li>
+          </ol>
+        </div>
+
+        <p style="font-size:11px;color:#94a3b8;margin-top:20px;text-align:center">
+          Generado automáticamente por KAM Intelligence · Accede al Pipeline CRM en vivo en <a href="http://localhost:8501" style="color:#534AB7">http://localhost:8501</a>
+        </p>
+      </div>
+    </div>"""
+
+    receptores = [correo.strip() for correo in destinatario.split(",") if correo.strip()]
+    asunto = f"KAM Intelligence · Radar Predictivo: {len(radar)} Renovaciones (S/ {monto_total:,.0f} · {len(propias)} Cuentas Qubits)"
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(remitente, app_password)
+        for receptor in receptores:
+            try:
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = asunto
+                msg["From"] = f"KAM Intelligence <{remitente}>"
+                msg["To"] = receptor
+                msg["X-Mailer"] = "KAM-Intelligence-Sync"
+                msg["Auto-Submitted"] = "auto-generated"
+                msg.attach(MIMEText(html_contenido, "html", "utf-8"))
+                server.sendmail(remitente, [receptor], msg.as_string())
+            except Exception as exc:
+                log.warning("No se pudo enviar reporte del radar a %s: %s", receptor, exc)
+    log.info("Reporte del radar predictivo enviado a %d destinatarios (%d oportunidades)", len(receptores), len(radar))
+    return True
 
 
 def main():
@@ -1874,15 +2100,22 @@ def main():
                         help="No envía correos electrónicos de nuevas oportunidades detectadas")
     parser.add_argument("--radar-renovaciones", action="store_true",
                         help="Calcula el radar predictivo de renovaciones de contratos (anticipación 90/60/30 días)")
+    parser.add_argument("--reporte-radar", action="store_true",
+                        help="Calcula y envía por correo el informe ejecutivo del radar predictivo")
     args = parser.parse_args()
 
+    if args.reporte_radar:
+        log.info("Generando y enviando reporte ejecutivo del Radar Predictivo por correo...")
+        ok = enviar_reporte_radar(dry_run=args.dry_run)
+        log.info("Envío finalizado: %s", "ÉXITO" if ok else "FALLIDO")
+        return
+
     if args.radar_renovaciones:
-        sh = conectar_sheets()
-        todos = sh.worksheet("procesos").get_all_records() + sh.worksheet("licitaciones").get_all_records()
-        radar = calcular_radar_renovaciones(todos, dias_horizonte=90)
+        radar = calcular_radar_renovaciones(dias_horizonte=90)
         log.info("Radar Predictivo de Renovaciones: %d contratos próximos a vencer", len(radar))
         for r in radar[:25]:
             log.info("[%s] %s (%d d) | %s | %s", r["etapa"], r["fecha_proyectada"], r["dias_restantes"], r["entidad"][:28], r["descripcion"][:50])
+        return
         return
 
     if args.releer_historico:

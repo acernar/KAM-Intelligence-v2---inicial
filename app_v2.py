@@ -2199,6 +2199,20 @@ elif seccion == "🧠 Inteligencia Comercial":
                 c2.metric("31–90 días", proximos_90)
                 c3.metric("Confianza alta", alta)
                 c4.metric("Total en horizonte", len(previstas))
+
+                col_btn, col_info = st.columns([1, 2])
+                with col_btn:
+                    if st.button("📧 Enviar Reporte a mi Correo", key="btn_enviar_radar_email", type="primary"):
+                        from seace_sync import enviar_reporte_radar
+                        with st.spinner("Enviando informe ejecutivo a tu correo..."):
+                            ok = enviar_reporte_radar()
+                            if ok:
+                                st.success("✅ Reporte enviado exitosamente a tu correo")
+                            else:
+                                st.error("❌ No se pudo enviar el reporte. Verifica tu configuración en .env")
+                with col_info:
+                    st.caption("Despacha el resumen ejecutivo del Radar Predictivo con cuentas propias destacadas (UNT, UNAMAD, PEIP) a tu bandeja.")
+
                 cols_ren = ['proxima_renovacion', 'dias', 'confianza', 'entidad', 'categoria', 'procesos',
                             'ticket_promedio', 'ultimo_ganador', 'metodo']
                 st.dataframe(previstas[cols_ren], use_container_width=True, hide_index=True,
