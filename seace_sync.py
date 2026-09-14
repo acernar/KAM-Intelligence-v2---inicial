@@ -87,7 +87,9 @@ TERMINOS_BUSQUEDA = [
     "nube", "cloud", "saas", "iaas", "paas", "hosting", "alojamiento web", "servidor", "servidores",
     "data center", "centro de datos", "sala de servidores", "virtualizacion", "vmware", "vsphere",
     "almacenamiento", "storage", "almacenamiento san", "almacenamiento nas", "backup", "respaldo",
-    "veeam", "veeam backup", "veritas", "acronis", "disaster recovery",
+    "veeam", "veeam backup", "veritas", "acronis", "acronis cyber protect", "acronis cyber protect cloud",
+    "acronis cyber backup", "acronis cyber disaster recovery", "acronis backup advanced", "acronis cloud storage",
+    "acronis email security", "acronis email archiving", "acronis endpoint", "acronis edr", "acronis xdr", "disaster recovery",
     "huawei", "oceanstor", "cloudengine", "vertiv", "liebert", "apc", "rack", "ups", "pdu",
     # Correo, Colaboración, Telefonía y VoIP
     "correo electronico", "google workspace", "microsoft 365", "office 365",
@@ -153,7 +155,7 @@ REGLAS_TI = {
         1: ["vpn", "antivirus", "zero trust"],
     },
     "Backup": {
-        3: ["veeam", "veeam backup", "veritas netbackup", "acronis cyber backup", "backup en la nube", "respaldo en la nube", "disaster recovery", "recuperacion ante desastres"],
+        3: ["veeam", "veeam backup", "veritas netbackup", "acronis cyber backup", "acronis cyber protect", "acronis cyber protect cloud", "acronis backup advanced", "acronis cyber disaster recovery", "acronis cloud storage", "backup en la nube", "respaldo en la nube", "disaster recovery", "recuperacion ante desastres"],
         2: ["copias de respaldo", "contingencia", "backup", "respaldo de datos", "veritas", "acronis"],
     },
     "Software": {
