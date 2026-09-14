@@ -2041,7 +2041,7 @@ if seccion == "🔎 Procesos OECE":
 
         col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
         with col_f1:
-            busqueda_oece = st.text_input("Buscar", placeholder="Entidad, descripción, proceso u OCID", key="buscar_oece")
+            busqueda_oece = st.text_input("Buscar", placeholder="Entidad, descripción, Acronis, proceso u OCID", key="buscar_oece")
         with col_f2:
             tipos_oece = st.multiselect("Tipo", sorted(df_oece['Tipo'].unique()), default=sorted(df_oece['Tipo'].unique()))
         with col_f3:
