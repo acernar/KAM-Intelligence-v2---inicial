@@ -57,6 +57,47 @@
       "estado_verificacion": "Verificado",
       "notas": "Contacto profesional publicado por la ATU; validar vigencia antes de campañas.",
       "agregado_el": "2026-09-14"
+    },
+    {
+      "nombre": "Richard Manuel Flores Cabello",
+      "cargo": "Subdirector (T) de la Subdirección de Integración y Gestión Tecnológica",
+      "area": "Tecnologías de la Información",
+      "email": "rfloresc@atu.gob.pe",
+      "telefono": "224-2444 / Anexo 1533",
+      "fuente": "Directorio Nacional de Funcionarios Públicos",
+      "url_fuente": "https://www.gob.pe/institucion/atu/funcionarios/264854-richard-manuel-flores-cabello",
+      "fecha_verificacion": "2026-09-14",
+      "estado_verificacion": "Verificado",
+      "notas": "Contacto profesional publicado por la ATU.",
+      "agregado_el": "2026-09-14"
+    },
+    {
+      "nombre": "Richard Manuel Flores Cabello",
+      "cargo": "Jefe de la Unidad de Tecnologías de la Información",
+      "area": "Tecnologías de la Información",
+      "email": "rfloresc@atu.gob.pe",
+      "telefono": "224-2444 / Anexo 1360",
+      "fuente": "Directorio Nacional de Funcionarios Públicos",
+      "url_fuente": "https://www.gob.pe/institucion/atu/funcionarios/264719-richard-manuel-flores-cabello",
+      "fecha_verificacion": "2026-09-14",
+      "estado_verificacion": "Verificado",
+      "notas": "Contacto profesional publicado por la ATU.",
+      "agregado_el": "2026-09-14"
+    }
+  ],
+  "SUPERINTENDENCIA DE BANCA, SEGUROS Y ADMINISTRADORAS PRIVADAS DE FONDOS DE PENSIONES": [
+    {
+      "nombre": "Juan Alberto Arias Cucho",
+      "cargo": "Gerente de Tecnologías de Información",
+      "area": "Tecnologías de la Información",
+      "email": "jariasc@sbs.gob.pe",
+      "telefono": "630-9000 / Anexo 1415",
+      "fuente": "Directorio Nacional de Funcionarios Públicos",
+      "url_fuente": "https://www.gob.pe/institucion/sbs/funcionarios/175040-juan-alberto-arias-cucho",
+      "fecha_verificacion": "2026-09-14",
+      "estado_verificacion": "Verificado",
+      "notas": "Contacto profesional publicado por la SBS.",
+      "agregado_el": "2026-09-14"
     }
   ],
   "SERVICIO NACIONAL DE METEOROLOGÍA E HIDROLOGÍA DEL PERÚ": [
