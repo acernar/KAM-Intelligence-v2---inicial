@@ -97,7 +97,7 @@ TERMINOS_BUSQUEDA = [
     "telefonia ip", "telefonia", "voip", "sip trunk", "troncal sip", "anexos virtuales",
     "videoconferencia", "zoom", "teams",
     # Ciberseguridad, Redes y Comunicaciones (LOL & NEXUS)
-    "ciberseguridad", "seguridad informatica", "seguridad perimetral", "firewall",
+    "ciberseguridad", "seguridad informatica", "seguridad perimetral", "firewall", "dlp", "data loss prevention", "prevencion de perdida de datos", "prevencion de fuga de informacion",
     "fortinet", "fortigate", "palo alto", "check point", "sophos", "trend micro",
     "cisco", "meraki", "aruba", "mikrotik", "ubiquiti", "unifi", "ruijie", "cambium",
     "switch", "switches", "router", "routers", "wifi", "access point",
@@ -150,8 +150,8 @@ REGLAS_TI = {
         1: ["cloud", "nube", "iac"],
     },
     "Seguridad Web": {
-        3: ["fortinet", "fortigate", "check point", "sophos", "trend micro", "palo alto", "cloudflare", "firewall de aplicaciones", "waf", "ciberseguridad", "seguridad perimetral", "antiddos", "antispam", "gestion unificada de amenazas", "edr", "xdr", "siem", "soc"],
-        2: ["seguridad informatica", "seguridad de la informacion", "proteccion de correo", "endpoint", "firewall", "utm", "antivirus corporativo", "vulnerabilidades", "pentesting", "certificado ssl"],
+        3: ["fortinet", "fortigate", "check point", "sophos", "trend micro", "palo alto", "cloudflare", "firewall de aplicaciones", "waf", "ciberseguridad", "seguridad perimetral", "antiddos", "antispam", "gestion unificada de amenazas", "edr", "xdr", "siem", "soc", "prevencion de perdida de datos", "prevencion de fuga de informacion", "data loss prevention", "acronis email security", "acronis edr", "acronis xdr", "acronis mdr", "acronis dlp"],
+        2: ["seguridad informatica", "seguridad de la informacion", "proteccion de correo", "endpoint", "firewall", "utm", "antivirus corporativo", "vulnerabilidades", "pentesting", "certificado ssl", "dlp"],
         1: ["vpn", "antivirus", "zero trust"],
     },
     "Backup": {
