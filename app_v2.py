@@ -1127,6 +1127,19 @@ def guardar_contacto(cliente, nombre, cargo, email, telefono, area='', fuente=''
     data = cargar_contactos()
     if cliente not in data:
         data[cliente] = []
+    # Evita duplicar el mismo contacto cuando se vuelve a importar el directorio.
+    clave_nueva = (str(email or '').strip().lower(), str(nombre or '').strip().lower(), str(telefono or '').strip())
+    for existente in data[cliente]:
+        clave_existente = (str(existente.get('email', '')).strip().lower(), str(existente.get('nombre', '')).strip().lower(), str(existente.get('telefono', '')).strip())
+        if clave_nueva != ('', '', '') and clave_nueva == clave_existente:
+            existente.update({
+                'nombre': nombre, 'cargo': cargo, 'area': area, 'email': email, 'telefono': telefono,
+                'fuente': fuente, 'url_fuente': url_fuente,
+                'fecha_verificacion': fecha_verificacion,
+                'estado_verificacion': estado_verificacion, 'notas': notas
+            })
+            _guardar_contactos_completos(data)
+            return
     data[cliente].append({
         'nombre': nombre, 'cargo': cargo, 'area': area, 'email': email, 'telefono': telefono,
         'fuente': fuente, 'url_fuente': url_fuente,

@@ -1,0 +1,122 @@
+{
+  "MIDIS-OFIS": [
+    {
+      "nombre": "Canal institucional de atención",
+      "cargo": "Mesa de Partes / Atención al Ciudadano",
+      "area": "Atención al Ciudadano",
+      "email": "contacto.portal@midis.gob.pe",
+      "telefono": "(01) 631 8000 anexo 1006",
+      "fuente": "Plataforma del Estado Peruano — contacto MIDIS",
+      "url_fuente": "https://www.gob.pe/institucion/midis/contacto-y-numeros-de-emergencias",
+      "fecha_verificacion": "2026-08-11",
+      "estado_verificacion": "Verificado",
+      "notas": "Canal institucional público; solicitar derivación a OFIS/TI u OEC según proceso.",
+      "agregado_el": "2026-08-11 10:10"
+    }
+  ],
+  "BANCO DE LA NACION": [
+    {
+      "nombre": "Mesa de Partes Digital",
+      "cargo": "Canal institucional",
+      "area": "Mesa de Partes",
+      "email": "",
+      "telefono": "(01) 519 2000",
+      "fuente": "Banco de la Nación — Mesa de Partes Digital",
+      "url_fuente": "https://www.bn.com.pe/mesa-de-partes/mesa-de-partes.asp",
+      "fecha_verificacion": "2026-08-11",
+      "estado_verificacion": "Verificado",
+      "notas": "Canal público para documentos electrónicos; usar formulario web para ingreso formal.",
+      "agregado_el": "2026-08-11 10:10"
+    }
+  ],
+  "MIN. TRANSPORTES Y COMUNICACIONES": [
+    {
+      "nombre": "Atención al Ciudadano",
+      "cargo": "Canal institucional",
+      "area": "Atención al Ciudadano",
+      "email": "atencionalciudadano@mtc.gob.pe",
+      "telefono": "(01) 615 7900",
+      "fuente": "Plataforma del Estado Peruano — MTC",
+      "url_fuente": "https://www.gob.pe/institucion/mtc/noticias/340182-comunicado",
+      "fecha_verificacion": "2026-08-11",
+      "estado_verificacion": "Verificado",
+      "notas": "Canal público de orientación; la Mesa de Partes Virtual usa mesadepartesvirtual@mtc.gob.pe.",
+      "agregado_el": "2026-08-11 10:10"
+    }
+  ],
+  "AUTORIDAD DE TRANSPORTE URBANO PARA LIMA Y CALLAO": [
+    {
+      "nombre": "Erik Wilber García Velásquez",
+      "cargo": "Jefe (T) de la Unidad de Tecnologías de la Información",
+      "area": "Tecnologías de la Información",
+      "email": "egarcia@atu.gob.pe",
+      "telefono": "(01) 224-2444 / Anexo 1360",
+      "fuente": "Directorio Nacional de Funcionarios Públicos",
+      "url_fuente": "https://www.gob.pe/institucion/atu/funcionarios?sheet=2",
+      "fecha_verificacion": "2026-09-14",
+      "estado_verificacion": "Verificado",
+      "notas": "Contacto profesional publicado por la ATU; validar vigencia antes de campañas.",
+      "agregado_el": "2026-09-14"
+    }
+  ],
+  "SERVICIO NACIONAL DE METEOROLOGÍA E HIDROLOGÍA DEL PERÚ": [
+    {
+      "nombre": "Benji Zaid Santillán Torres",
+      "cargo": "Responsable de la Oficina de Tecnologías de la Información",
+      "area": "Tecnologías de la Información",
+      "email": "bsantillan@senamhi.gob.pe",
+      "telefono": "614-1414 / Anexo 425",
+      "fuente": "Directorio de funcionarios SENAMHI",
+      "url_fuente": "https://www.gob.pe/institucion/senamhi/funcionarios/251451-benji-zaid-santillan-torres",
+      "fecha_verificacion": "2026-09-14",
+      "estado_verificacion": "Verificado",
+      "notas": "Designación y datos publicados en 2026.",
+      "agregado_el": "2026-09-14"
+    }
+  ],
+  "AUTORIDAD PORTUARIA NACIONAL": [
+    {
+      "nombre": "Julio César Martínez Chunga",
+      "cargo": "Coordinador de la Unidad Funcional de Tecnologías de la Información",
+      "area": "Tecnologías de la Información",
+      "email": "jmartinez@apn.gob.pe",
+      "telefono": "(01) 630-9600 / Anexo 1802",
+      "fuente": "Directorio Nacional de Funcionarios Públicos",
+      "url_fuente": "https://www.gob.pe/institucion/apn/funcionarios?sheet=2",
+      "fecha_verificacion": "2026-09-14",
+      "estado_verificacion": "Verificado",
+      "notas": "Contacto profesional publicado por la APN.",
+      "agregado_el": "2026-09-14"
+    }
+  ],
+  "ORGANISMO TÉCNICO DE LA ADMINISTRACIÓN DE LOS SERVICIOS DE SANEAMIENTO": [
+    {
+      "nombre": "Alain Donuhue Dongo Quintana",
+      "cargo": "Jefe de la Unidad de Tecnologías de la Información",
+      "area": "Tecnologías de la Información",
+      "email": "alain.dongo@otass.gob.pe",
+      "telefono": "500-2090 / Anexo 2200",
+      "fuente": "Directorio de funcionarios OTASS",
+      "url_fuente": "https://www.gob.pe/institucion/otass/funcionarios",
+      "fecha_verificacion": "2026-09-14",
+      "estado_verificacion": "Verificado",
+      "notas": "Validar vigencia: OTASS publicó cambios de titularidad de TI durante 2026.",
+      "agregado_el": "2026-09-14"
+    }
+  ],
+  "CAJA DE PENSIONES MILITAR POLICIAL": [
+    {
+      "nombre": "Julio César Campos Alvarado",
+      "cargo": "Jefe de Departamento de Infraestructura y Seguridad Informática",
+      "area": "Infraestructura y Seguridad Informática",
+      "email": "jcampos@lacaja.com.pe",
+      "telefono": "(01) 634-6464 / Anexo 265",
+      "fuente": "Directorio de funcionarios CPMP",
+      "url_fuente": "https://www.gob.pe/institucion/cpmp/funcionarios/139910-julio-cesar-campos-alvarado",
+      "fecha_verificacion": "2026-09-14",
+      "estado_verificacion": "Revisar vigencia",
+      "notas": "El directorio indica última actualización en 2025; confirmar antes de enviar.",
+      "agregado_el": "2026-09-14"
+    }
+  ]
+}
