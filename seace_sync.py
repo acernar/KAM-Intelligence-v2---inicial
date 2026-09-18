@@ -1428,6 +1428,116 @@ CLASIFICACION_HISTORICA_CAMPOS = [
     "requiere_revision",
 ]
 
+POSTORES_HISTORICOS_CAMPOS = [
+    "postores", "num_postores_detectados", "postores_fuente", "postores_actualizados_el",
+]
+
+
+def _release_compilado(paquete: dict) -> dict:
+    """Obtiene el compiledRelease tanto de una ficha OCDS como de su paquete de records."""
+    if not isinstance(paquete, dict):
+        return {}
+    if isinstance(paquete.get("compiledRelease"), dict):
+        return paquete["compiledRelease"]
+    registros = paquete.get("records") or []
+    if registros and isinstance(registros[0], dict):
+        return registros[0].get("compiledRelease") or registros[0].get("release") or {}
+    return paquete.get("release") or {}
+
+
+def _extraer_postores_ocds(release: dict) -> list[dict]:
+    """Extrae postores reales OCDS y marca al adjudicatario cuando la ficha lo publica."""
+    tender = release.get("tender") or {}
+    candidatos = tender.get("tenderers") or [
+        party for party in (release.get("parties") or [])
+        if "tenderer" in (party.get("roles") or [])
+    ]
+    ganadores = {
+        str(proveedor.get("id") or "").replace("PE-RUC-", "").strip()
+        for award in (release.get("awards") or [])
+        for proveedor in (award.get("suppliers") or [])
+    }
+    nombres_ganadores = {
+        normalizar(proveedor.get("name") or "")
+        for award in (release.get("awards") or [])
+        for proveedor in (award.get("suppliers") or [])
+    }
+    postores, vistos = [], set()
+    for candidato in candidatos:
+        empresa = str(candidato.get("name") or "").strip()
+        ruc = str(candidato.get("id") or "").replace("PE-RUC-", "").strip()
+        clave = ruc or normalizar(empresa)
+        if not clave or clave in vistos:
+            continue
+        vistos.add(clave)
+        postores.append({
+            "empresa": empresa,
+            "ruc": ruc,
+            "es_ganador": ruc in ganadores or normalizar(empresa) in nombres_ganadores,
+        })
+    return postores
+
+
+def releer_postores_historicos_sheets(sh, hoja: str, limite: int = 200) -> int:
+    """Completa los postores nominales desde OECE-OCDS, sin tocar los demás campos."""
+    from gspread.utils import rowcol_to_a1
+
+    ws = sh.worksheet(hoja)
+    registros = ws.get_all_records()
+    columnas = list(ws.row_values(1))
+    nuevas_columnas = [campo for campo in POSTORES_HISTORICOS_CAMPOS if campo not in columnas]
+    if nuevas_columnas:
+        columnas.extend(nuevas_columnas)
+        ws.update(values=[columnas], range_name=f"A1:{rowcol_to_a1(1, len(columnas))}", value_input_option="RAW")
+
+    objetivos = []
+    for numero_fila, fila in enumerate(registros, start=2):
+        ocid = str(fila.get("ocid") or "").strip()
+        if not ocid or fila.get("postores"):
+            continue
+        participantes = int(float(fila.get("empresas_participantes") or 0))
+        estado = normalizar(fila.get("estado") or fila.get("resultadoAdjudicacion") or "")
+        if participantes <= 0 and not any(valor in estado for valor in ("adjud", "contrato", "culminado")):
+            continue
+        objetivos.append((numero_fila, fila, ocid))
+        if len(objetivos) >= limite:
+            break
+    if not objetivos:
+        log.info("%s: no quedan filas pendientes de postores OCDS", hoja)
+        return 0
+
+    def procesar(objetivo):
+        numero_fila, fila, ocid = objetivo
+        url = fila.get("api_url") or f"{API_BASE}/record/{urllib.parse.quote(ocid, safe='')}"
+        release = _release_compilado(_get_json(url))
+        return numero_fila, _extraer_postores_ocds(release)
+
+    resultados = []
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futuros = [executor.submit(procesar, objetivo) for objetivo in objetivos]
+        for futuro in as_completed(futuros):
+            try:
+                numero_fila, postores = futuro.result()
+                if postores:
+                    resultados.append((numero_fila, postores))
+            except Exception as exc:
+                log.warning("No se pudo releer postores históricos en %s: %s", hoja, exc)
+
+    cambios = []
+    for numero_fila, postores in resultados:
+        valores = {
+            "postores": json.dumps(postores, ensure_ascii=False),
+            "num_postores_detectados": str(len(postores)),
+            "postores_fuente": "OECE-OCDS",
+            "postores_actualizados_el": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
+        for campo, valor in valores.items():
+            cambios.append({"range": rowcol_to_a1(numero_fila, columnas.index(campo) + 1), "values": [[valor]]})
+    if cambios:
+        ws.batch_update(cambios, value_input_option="RAW")
+    log.info("%s: postores OCDS completados en %d/%d filas", hoja, len(resultados), len(objetivos))
+    return len(resultados)
+
 
 def releer_clasificacion_historica_sheets(sh, hoja: str, limite: int = 200) -> int:
     """Completa clasificación OCDS de filas existentes sin alterar sus demás datos."""
@@ -2178,6 +2288,9 @@ def main():
     parser.add_argument("--releer-historico", action="store_true",
                         help="Completa clasificación oficial OCDS de filas existentes en Google Sheets")
     parser.add_argument("--max-registros-historico", type=int, default=200)
+    parser.add_argument("--releer-postores", action="store_true",
+                        help="Completa postores nominales y ganador desde fichas OCDS existentes")
+    parser.add_argument("--max-registros-postores", type=int, default=200)
     parser.add_argument("--solo-menores", action="store_true", help="Solo busca contrataciones menores directas (licitacionesperu.pe)")
     parser.add_argument("--solo-licitaciones", action="store_true", help="Solo busca licitaciones en la API OCDS de OECE")
     parser.add_argument("--sin-alertas-calendario", action="store_true",
@@ -2212,6 +2325,15 @@ def main():
                 sh, hoja, limite=max(1, args.max_registros_historico)
             )
         log.info("Relectura histórica finalizada: %d filas actualizadas", total_releidos)
+        return
+    if args.releer_postores:
+        sh = conectar_sheets()
+        total_postores = 0
+        for hoja in ("licitaciones", "procesos"):
+            total_postores += releer_postores_historicos_sheets(
+                sh, hoja, limite=max(1, args.max_registros_postores)
+            )
+        log.info("Relectura histórica de postores finalizada: %d filas actualizadas", total_postores)
         return
     hasta = datetime.strptime(args.fecha, "%Y-%m-%d").date() if args.fecha else date.today()
     desde = hasta - timedelta(days=args.dias)
