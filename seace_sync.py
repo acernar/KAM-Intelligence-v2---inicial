@@ -1478,7 +1478,7 @@ def _extraer_postores_ocds(release: dict) -> list[dict]:
     return postores
 
 
-def releer_postores_historicos_sheets(sh, hoja: str, limite: int = 200) -> int:
+def releer_postores_historicos_sheets(sh, hoja: str, limite: int = 200, desde: date | None = None) -> int:
     """Completa los postores nominales desde OECE-OCDS, sin tocar los demás campos."""
     from gspread.utils import rowcol_to_a1
 
@@ -1494,6 +1494,9 @@ def releer_postores_historicos_sheets(sh, hoja: str, limite: int = 200) -> int:
     for numero_fila, fila in enumerate(registros, start=2):
         ocid = str(fila.get("ocid") or "").strip()
         if not ocid or fila.get("postores"):
+            continue
+        fecha_publicacion = _fecha_corta(fila.get("publicado") or fila.get("fechaConvocatoria"))
+        if desde and (not fecha_publicacion or fecha_publicacion < desde.isoformat()):
             continue
         participantes = int(float(fila.get("empresas_participantes") or 0))
         estado = normalizar(fila.get("estado") or fila.get("resultadoAdjudicacion") or "")
@@ -1518,8 +1521,9 @@ def releer_postores_historicos_sheets(sh, hoja: str, limite: int = 200) -> int:
         for futuro in as_completed(futuros):
             try:
                 numero_fila, postores = futuro.result()
-                if postores:
-                    resultados.append((numero_fila, postores))
+                # Incluso una lista vacía se registra como consultada, para no
+                # volver a pedir una ficha OCDS que aún no publica ofertas.
+                resultados.append((numero_fila, postores))
             except Exception as exc:
                 log.warning("No se pudo releer postores históricos en %s: %s", hoja, exc)
 
@@ -2291,6 +2295,8 @@ def main():
     parser.add_argument("--releer-postores", action="store_true",
                         help="Completa postores nominales y ganador desde fichas OCDS existentes")
     parser.add_argument("--max-registros-postores", type=int, default=200)
+    parser.add_argument("--desde-postores", type=str, default=None,
+                        help="Fecha mínima YYYY-MM-DD para enriquecer postores históricos")
     parser.add_argument("--solo-menores", action="store_true", help="Solo busca contrataciones menores directas (licitacionesperu.pe)")
     parser.add_argument("--solo-licitaciones", action="store_true", help="Solo busca licitaciones en la API OCDS de OECE")
     parser.add_argument("--sin-alertas-calendario", action="store_true",
@@ -2328,10 +2334,11 @@ def main():
         return
     if args.releer_postores:
         sh = conectar_sheets()
+        desde_postores = datetime.strptime(args.desde_postores, "%Y-%m-%d").date() if args.desde_postores else None
         total_postores = 0
         for hoja in ("licitaciones", "procesos"):
             total_postores += releer_postores_historicos_sheets(
-                sh, hoja, limite=max(1, args.max_registros_postores)
+                sh, hoja, limite=max(1, args.max_registros_postores), desde=desde_postores
             )
         log.info("Relectura histórica de postores finalizada: %d filas actualizadas", total_postores)
         return
