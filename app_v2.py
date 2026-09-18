@@ -96,12 +96,17 @@ def _get_gsheets_client():
 
         creds_dict = None
 
-        # Opción 1: Streamlit Secrets (Streamlit Cloud)
-        if hasattr(st, 'secrets') and 'gsheets' in st.secrets:
-            creds_dict = dict(st.secrets['gsheets']['credentials'])
+        # Opción 1: Streamlit Secrets (Streamlit Cloud). En local, consultar
+        # st.secrets sin secrets.toml lanza una excepción; no debe impedir el
+        # uso de las credenciales locales.
+        try:
+            if hasattr(st, 'secrets') and 'gsheets' in st.secrets:
+                creds_dict = dict(st.secrets['gsheets']['credentials'])
+        except Exception:
+            creds_dict = None
 
         # Opción 2: Archivo local (desarrollo)
-        elif os.path.exists('gsheets_credentials.json'):
+        if creds_dict is None and os.path.exists('gsheets_credentials.json'):
             with open('gsheets_credentials.json', 'r') as f:
                 creds_dict = json.load(f)
 
