@@ -1862,8 +1862,38 @@ def calcular_renovaciones_predictivas(universo, fecha_corte=None):
     return pd.DataFrame(filas).sort_values(['dias', 'confianza']) if filas else pd.DataFrame()
 
 
+def construir_recurrencias_entidad_producto(universo):
+    """Resume compras repetidas por entidad y producto para priorización comercial."""
+    if universo.empty:
+        return pd.DataFrame()
+    filas = []
+    for (entidad, producto), grupo in universo.groupby(['entidad', 'categoria'], dropna=False):
+        ordenado = grupo.sort_values('fecha_publicacion_dt', na_position='last').copy()
+        fechas = sorted(pd.Series(ordenado['fecha_publicacion_dt'].dropna().dt.normalize().unique()).tolist())
+        if len(ordenado) < 2:
+            continue
+        intervalos = [int((pd.Timestamp(b) - pd.Timestamp(a)).days) for a, b in zip(fechas, fechas[1:])]
+        montos = ordenado.loc[ordenado['monto'] > 0, 'monto']
+        procesos = ordenado['id'].fillna('').astype(str).tolist()
+        filas.append({
+            'entidad': entidad,
+            'producto': producto,
+            'procesos_recurrentes': len(ordenado),
+            'primera_compra': fechas[0].date() if fechas else None,
+            'ultima_compra': fechas[-1].date() if fechas else None,
+            'intervalo_mediano_dias': int(pd.Series(intervalos).median()) if intervalos else None,
+            'monto_historico': float(ordenado['monto'].sum()),
+            'ticket_promedio': float(montos.mean()) if not montos.empty else 0,
+            'procesos': ' · '.join(procesos[:12]),
+        })
+    return pd.DataFrame(filas).sort_values(
+        ['procesos_recurrentes', 'ultima_compra'], ascending=[False, False]
+    ) if filas else pd.DataFrame()
+
+
 universo_inteligencia = construir_universo_inteligencia(df_menores, df_licitaciones)
 renovaciones_predictivas = calcular_renovaciones_predictivas(universo_inteligencia)
+recurrencias_entidad_producto = construir_recurrencias_entidad_producto(universo_inteligencia)
 
 if df_menores.empty and df_licitaciones.empty:
     st.error("❌ No hay datos disponibles. Agrega procesos para comenzar.")
@@ -2190,8 +2220,8 @@ elif seccion == "🧠 Inteligencia Comercial":
     if universo_inteligencia.empty:
         st.info("No hay información suficiente para construir inteligencia comercial.")
     else:
-        tab_entidad, tab_renovaciones, tab_mercado, tab_participacion = st.tabs([
-            "🏛️ Entidad 360°", "📅 Renovaciones previstas", "🏆 Mercado y competencia", "🤝 Solo o consorcio"
+        tab_entidad, tab_recurrencias, tab_renovaciones, tab_mercado, tab_participacion = st.tabs([
+            "🏛️ Entidad 360°", "🔁 Recurrentes por producto", "📅 Renovaciones previstas", "🏆 Mercado y competencia", "🤝 Solo o consorcio"
         ])
 
         with tab_entidad:
@@ -2238,6 +2268,37 @@ elif seccion == "🧠 Inteligencia Comercial":
             st.dataframe(datos_entidad.sort_values('fecha_publicacion_dt', ascending=False)[cols_hist],
                          use_container_width=True, hide_index=True,
                          column_config={'monto': st.column_config.NumberColumn('Monto', format='S/ %.0f')})
+
+        with tab_recurrencias:
+            st.caption("Procesos repetidos por entidad y producto. Un intervalo se calcula solo cuando hay fechas comparables.")
+            if recurrencias_entidad_producto.empty:
+                st.info("Aún no hay dos o más procesos comparables por entidad y producto.")
+            else:
+                entidades_rec = ['Todas'] + sorted(recurrencias_entidad_producto['entidad'].unique().tolist())
+                productos_rec = ['Todos'] + sorted(recurrencias_entidad_producto['producto'].unique().tolist())
+                c_entidad, c_producto, c_minimo = st.columns([1.3, 1.1, 0.7])
+                entidad_rec = c_entidad.selectbox("Entidad", entidades_rec, key="recurrencia_entidad")
+                producto_rec = c_producto.selectbox("Producto", productos_rec, key="recurrencia_producto")
+                minimo_rec = c_minimo.number_input("Mínimo de procesos", min_value=2, value=2, step=1, key="recurrencia_minimo")
+                vista_rec = recurrencias_entidad_producto[
+                    recurrencias_entidad_producto['procesos_recurrentes'] >= minimo_rec
+                ].copy()
+                if entidad_rec != 'Todas':
+                    vista_rec = vista_rec[vista_rec['entidad'] == entidad_rec]
+                if producto_rec != 'Todos':
+                    vista_rec = vista_rec[vista_rec['producto'] == producto_rec]
+                st.metric("Combinaciones recurrentes", len(vista_rec))
+                st.dataframe(
+                    vista_rec[['entidad', 'producto', 'procesos_recurrentes', 'primera_compra', 'ultima_compra',
+                               'intervalo_mediano_dias', 'ticket_promedio', 'monto_historico', 'procesos']],
+                    use_container_width=True, hide_index=True,
+                    column_config={
+                        'procesos_recurrentes': st.column_config.NumberColumn('Procesos'),
+                        'intervalo_mediano_dias': st.column_config.NumberColumn('Intervalo mediano (días)'),
+                        'ticket_promedio': st.column_config.NumberColumn('Ticket promedio', format='S/ %.0f'),
+                        'monto_historico': st.column_config.NumberColumn('Monto histórico', format='S/ %.0f'),
+                    }
+                )
 
         with tab_renovaciones:
             st.caption("Las fechas son estimaciones comerciales. Cada fila explica la evidencia utilizada; confirma siempre el PAC, contrato y bases.")

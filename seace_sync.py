@@ -296,6 +296,34 @@ REGLAS_TI = {
     },
 }
 
+# Taxonomía comercial explícita. Se evalúa antes que las categorías históricas,
+# que se conservan como respaldo para no perder oportunidades ya cubiertas.
+REGLAS_SERVICIO_KAM = {
+    "CLOUD": {3: ["infraestructura en nube", "servidores virtuales", "data center", "centro de datos", "huawei", "azure", "aws"], 2: ["cloud", "nube", "virtual", "storage", "almacenamiento", "iaas", "paas", "saas", "hosting"]},
+    "VDI": {3: ["escritorios virtuales", "escritorios remotos", "maquinas virtuales", "work space"], 2: ["vdi"]},
+    "LMS": {3: ["proctoring", "aula virtual", "plataforma educativa", "examenes virtuales"], 2: ["lms"], 1: ["plataforma", "moodle"]},
+    "EMAIL": {3: ["herramientas colaborativas", "herramienta colaborativa", "plataforma colaborativa"], 2: ["email", "correo", "mensajeria", "colaboracion", "antispam"]},
+    "OFFICE 365": {3: ["microsoft 365"], 2: ["office", "ofimatica", "microsoft"]},
+    "TEAMS": {3: ["videoconferencia"]},
+    "CIBERSEGURIDAD": {3: ["seguridad", "waf", "firewall"]},
+    "BACKUP": {3: ["disaster recovery", "acronis", "veeam"], 2: ["backup", "baas", "respaldo", "draas"]},
+    "INTELIGENCIA ARTIFICIAL": {3: ["asistente virtual", "inteligencia artificial", "chat bot"], 2: ["ia"]},
+    "Desarrollo de software": {3: ["desarrollo"], 2: ["software"]},
+    "INTERNET": {3: ["acceso dedicado", "transmision de datos", "interconexion", "backbone"]},
+    "Gabinetes autocontenidos": {3: ["gabinete autosoportado", "gabinete de comunicaciones", "rack de comunicaciones", "data center modular", "centro de datos modular", "micro data center", "sala de servidores", "acondicionamiento centro de datos", "implementacion data center", "aire acondicionado de precision", "sistema ininterrumpido de energia"], 2: ["ups"]},
+    "Switches y red LAN": {3: ["conmutador de red", "switch poe", "switch administrable", "equipamiento de red", "equipos de comunicacion", "red lan", "renovacion tecnologica", "infraestructura tecnologica", "core de red"], 2: ["switch", "switches"]},
+    "ONT, OLT y fibra optica": {3: ["fibra optica", "red de fibra optica", "planta externa", "tendido de fibra", "servicio de internet", "banda ancha", "red de transporte", "ultima milla"], 2: ["olt", "ont", "onu", "gpon", "ftth", "conectividad"]},
+    "Camaras CCTV": {3: ["camaras de videovigilancia", "videovigilancia con analitica", "seguridad ciudadana", "centro de monitoreo", "central de videovigilancia", "sistema de seguridad electronica"], 2: ["videovigilancia", "camaras ip", "cctv", "nvr", "grabador de video"]},
+    "Redes": {3: ["access point", "red inalambrica", "seguridad perimetral", "control de acceso", "transceptor sfp"], 2: ["wifi", "firewall", "router", "servidores", "almacenamiento", "storage", "biometrico"]},
+    "Switch": {3: ["adquisicion de equipos de comunicaciones", "adquisicion de switch de comunicaciones", "adquisicion de switches de telecomunicaciones", "adquisicion de switch de borde", "adquisicion de switch core", "switch de red troncal para rack", "adquisicion de switch y hardware general", "switchs"], 2: ["adquisicion de switch", "adquisicion de switches", "adquisicion de servidor, equipo de almacenamiento, switch y escaner"]},
+    "Switch y gabinete": {3: ["adquisicion de equipos de conectividad", "implementacion de cableado estructurado", "servicio de cableado de voz y red de datos", "adquisicion de equipos de telecomunicaciones", "adquisicion de hardware general"]},
+    "Gabinete": {3: ["adquisicion de gabinete de comunicacion", "adquisicion de gabinete de comunicaciones", "rack gabinete de telecomunicaciones", "gabinete de servidores de metal de pared", "gabinete de piso"]},
+}
+
+TERMINOS_BUSQUEDA = list(dict.fromkeys(
+    TERMINOS_BUSQUEDA + [frase for reglas in REGLAS_SERVICIO_KAM.values() for frases in reglas.values() for frase in frases]
+))
+
 EXCLUSIONES = [
     # Excluir únicamente logística y mensajería física; correo electrónico,
     # colaboración y mensajería digital sí son oportunidades comerciales.
@@ -307,14 +335,15 @@ EXCLUSIONES = [
 ]
 
 FAMILIAS_KAM = {
-    "Cloud y Colaboración": {"Nube", "Correo/Colaboración", "Backup"},
-    "Ciberseguridad": {"Seguridad Web", "Identidad y Firma Digital"},
+    "Cloud y Colaboración": {"Nube", "Correo/Colaboración", "Backup", "CLOUD", "VDI", "LMS", "EMAIL", "OFFICE 365", "TEAMS"},
+    "Ciberseguridad": {"Seguridad Web", "Identidad y Firma Digital", "CIBERSEGURIDAD"},
     "Infraestructura y Redes": {
         "Infraestructura", "Redes y Conectividad", "Cableado Estructurado", "Energía TI",
-        "GPON", "Telecomunicaciones y Voz",
+        "GPON", "Telecomunicaciones y Voz", "INTERNET", "Gabinetes autocontenidos", "Switches y red LAN",
+        "ONT, OLT y fibra optica", "Redes", "Switch", "Switch y gabinete", "Gabinete",
     },
-    "Seguridad Física y Audiovisual": {"Videovigilancia", "Audiovisual y Salas", "Videoconferencia"},
-    "Software y Datos": {"Software", "Datos y Analítica", "Desarrollo y Transformación Digital", "DevOps", "IA"},
+    "Seguridad Física y Audiovisual": {"Videovigilancia", "Audiovisual y Salas", "Videoconferencia", "Camaras CCTV"},
+    "Software y Datos": {"Software", "Datos y Analítica", "Desarrollo y Transformación Digital", "DevOps", "IA", "INTELIGENCIA ARTIFICIAL", "Desarrollo de software"},
     "Equipamiento y Digitalización": {"Pantallas Interactivas", "Cómputo y Periféricos", "Impresión y Digitalización"},
     "Servicios Profesionales TI": {"Soporte y Servicios Gestionados", "Capacitación TI", "Expedientes Técnicos y Supervisión"},
 }
@@ -371,7 +400,9 @@ def evaluar_relevancia(titulo: str, descripcion: str = "") -> tuple[int, str, li
         return 0, "No TI", ["exclusión comercial o de obra civil"]
     puntos_por_categoria = {}
     coincidencias_por_categoria = {}
-    for categoria, reglas in REGLAS_TI.items():
+    # Se calculan ambas taxonomías: la comercial explícita prevalece cuando
+    # reconoce una frase, y la histórica mantiene la cobertura de respaldo.
+    for categoria, reglas in {**REGLAS_SERVICIO_KAM, **REGLAS_TI}.items():
         puntos = 0
         coincidencias = []
         for peso, frases in reglas.items():
@@ -381,7 +412,10 @@ def evaluar_relevancia(titulo: str, descripcion: str = "") -> tuple[int, str, li
                 coincidencias.extend(halladas)
         puntos_por_categoria[categoria] = puntos
         coincidencias_por_categoria[categoria] = coincidencias
-    categoria = max(puntos_por_categoria, key=puntos_por_categoria.get)
+    categorias_servicio = list(REGLAS_SERVICIO_KAM)
+    categoria_servicio = max(categorias_servicio, key=puntos_por_categoria.get)
+    categoria_historica = max(REGLAS_TI, key=puntos_por_categoria.get)
+    categoria = categoria_servicio if puntos_por_categoria[categoria_servicio] else categoria_historica
     puntos = puntos_por_categoria[categoria]
     # Bonificación por coincidencia en dos líneas complementarias.
     lineas_positivas = sum(1 for valor in puntos_por_categoria.values() if valor > 0)
